@@ -19,8 +19,9 @@ def weighted_perpendicular_aggregator(delta_noise_preds, weights, batch_size):
     Notes: 
      - weights: an array with the weights for combining the noise predictions
      - delta_noise_preds: [B x K, 4, 64, 64], K = max_prompts_per_dir
-    """
+    """   
     delta_noise_preds = delta_noise_preds.split(batch_size, dim=0) # K x [B, 4, 64, 64]
+
     weights = weights.split(batch_size, dim=0) # K x [B]
     # print(f"{weights[0].shape = } {weights = }")
 
@@ -29,6 +30,7 @@ def weighted_perpendicular_aggregator(delta_noise_preds, weights, batch_size):
     main_positive = delta_noise_preds[0] # [B, 4, 64, 64]
 
     accumulated_output = torch.zeros_like(main_positive)
+
     for i, complementary_noise_pred in enumerate(delta_noise_preds[1:], start=1):
         # print(f"\n{i = }, {weights[i] = }, {weights[i].shape = }\n")
 

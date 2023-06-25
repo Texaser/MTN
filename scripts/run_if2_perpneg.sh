@@ -16,3 +16,5 @@ CUDA_VISIBLE_DEVICES=3 python main.py -O --text "a shiba dog wearing sunglasses"
 CUDA_VISIBLE_DEVICES=3 python main.py -O --text "shiba wearing sunglasses"  --workspace trial_perpneg_if2_shiba_p --dmtet --iters 5000 --perpneg --negative_w -3.0 --init_with trial_perpneg_if_shiba/checkpoints/df.pth
 CUDA_VISIBLE_DEVICES=3 python main.py -O --text "shiba wearing sunglasses" --workspace trial_perpneg_if2_shiba_nop --dmtet --iters 5000 --init_with trial_perpneg_if_shiba/checkpoints/df.pth
 
+python main.py -O --text "a tiger cub" --workspace trial_perpneg_if_tiger_ms_lr --iters 5000 --IF --batch_size 1 --perpneg
+python main.py -O --text "a shiba dog wearing sunglasses" --workspace trial_perpneg_if_shiba_ms --iters 5000 --IF --batch_size 1 --perpneg

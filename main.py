@@ -1,6 +1,6 @@
 import os 
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-# os.environ["CUDA_VISIBLE_DEVICES"] = '2'
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+os.environ["CUDA_VISIBLE_DEVICES"] = '2'
 import torch
 import argparse
 import pandas as pd
@@ -86,7 +86,7 @@ if __name__ == '__main__':
     parser.add_argument('--blob_density', type=float, default=5, help="max (center) density for the density blob")
     parser.add_argument('--blob_radius', type=float, default=0.2, help="control the radius for the density blob")
     # network backbone
-    parser.add_argument('--backbone', type=str, default='multiscale_triplane_pooling', choices=['grid_tcnn', 'grid', 'vanilla', 'grid_taichi', 'multiscale_triplane', 'multiscale_triplane_pooling'], help="nerf backbone")
+    parser.add_argument('--backbone', type=str, default='grid', choices=['grid_tcnn', 'grid', 'vanilla', 'grid_taichi'], help="nerf backbone")
     parser.add_argument('--optim', type=str, default='adan', choices=['adan', 'adam'], help="optimizer")
     parser.add_argument('--sd_version', type=str, default='2.1', choices=['1.5', '2.0', '2.1'], help="stable diffusion version")
     parser.add_argument('--hf_key', type=str, default=None, help="hugging face Stable diffusion model key")
@@ -312,7 +312,7 @@ if __name__ == '__main__':
 
     if opt.seed is not None:
         seed_everything(int(opt.seed))
-    torch.cuda.set_device(2)
+    # torch.cuda.set_device(2)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = NeRFNetwork(opt).to(device)
@@ -368,7 +368,7 @@ if __name__ == '__main__':
         if opt.optim == 'adan':
             from optimizer import Adan
             # Adan usually requires a larger LR
-            optimizer = lambda model: Adan(model.get_params(5 * opt.lr), eps=1e-8, weight_decay=2e-5, max_grad_norm=5.0, foreach=False)
+            optimizer = lambda model: Adan(model.get_params(2 * opt.lr), eps=1e-8, weight_decay=2e-5, max_grad_norm=5.0, foreach=False)
         else: # adam
             optimizer = lambda model: torch.optim.Adam(model.get_params(opt.lr), betas=(0.9, 0.99), eps=1e-15)
 

@@ -707,7 +707,7 @@ class MultiScaleTriplane(nn.Module):
     
 
 class MultiScaleTriplane_Pooling(nn.Module):
-    def __init__(self, input_dim=3, n_scales=1, channel=16, grid_size=64):
+    def __init__(self, input_dim=3, n_scales=3, channel=32, grid_size=256):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = channel 
@@ -731,7 +731,8 @@ class MultiScaleTriplane_Pooling(nn.Module):
         coordinates = (coordinates + bound) / (2 * bound)
         coordinates = coordinates.unsqueeze(0)
 
-        features_list = []
+        # features_list = []
+        combined_features = None
 
         plane_x = self.plane_x1
         plane_y = self.plane_y1
@@ -743,7 +744,13 @@ class MultiScaleTriplane_Pooling(nn.Module):
             xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z)
             # features = torch.sum(torch.stack([xy_embed, yz_embed, xz_embed]), dim=0)
             features = xy_embed.add_(yz_embed).add_(xz_embed)
-            features_list.append(features[0])
+            # features_list.append(features[0])
+
+            if combined_features is None:
+                combined_features = features
+            else:
+                # Concatenate along a new dimension and avoid keeping all features in memory
+                combined_features = torch.cat((combined_features, features), dim=0)
 
             if scale_idx < self.n_scales - 1:
                 plane_x = F.avg_pool2d(plane_x, kernel_size=3, stride=2, padding=1)
@@ -751,8 +758,10 @@ class MultiScaleTriplane_Pooling(nn.Module):
                 plane_z = F.avg_pool2d(plane_z, kernel_size=3, stride=2, padding=1)
 
         # Combine features from different scales
-        # combined_features = torch.cat(features_list, dim=-1)
-        
+        # print(features.shape)
+        # combined_features = torch.cat(features_list, dim=0)
+        # combined_features = torch.stack(features_list)
+        # print(combined_features.shape)
         del features, plane_x, plane_y, plane_z, xy_embed, yz_embed, xz_embed
 
         # if iteration < 6000:
@@ -764,7 +773,7 @@ class MultiScaleTriplane_Pooling(nn.Module):
 
         # del features_list
 
-        return features_list
+        return combined_features
     
 class CartesianPlaneNonSirenEmbeddingNetwork(nn.Module):
     def __init__(self, input_dim=3, output_dim=1):

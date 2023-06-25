@@ -249,7 +249,7 @@ class Trainer(object):
             model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
         self.model = model
-        
+
         # guide model
         self.guidance = guidance
         self.embeddings = {}
@@ -436,7 +436,7 @@ class Trainer(object):
 
     ### ------------------------------
 
-    def train_step(self, data, save_guidance_path:Path=None, scales=1):
+    def train_step(self, data, save_guidance_path:Path=None, scales=3):
         """
             Args:
                 save_guidance_path: an image that combines the NeRF render, the added latent noise,
@@ -535,22 +535,17 @@ class Trainer(object):
                 bg_color = torch.rand(3).to(self.device) # single color random bg
 
         outputs = self.model.render(rays_o, rays_d, mvp, H, W, staged=False, perturb=True, bg_color=bg_color, ambient_ratio=ambient_ratio, shading=shading, binarize=binarize)
-        pred_depths, pred_masks, pred_normals, pred_rgbs = [], [], [], []
-        for i in range(scales):
-            pred_depth = outputs['depth'][i].reshape(B, 1, H, W)
-            pred_mask = outputs['weights_sum'][i].reshape(B, 1, H, W)
-            if 'normal_image' in outputs and outputs['normal_image']:
-                pred_normal = outputs['normal_image'][i].reshape(B, H, W, 3)
-            
-            if as_latent:
-                # abuse normal & mask as latent code for faster geometry initialization (ref: fantasia3D)
-                pred_rgb = torch.cat([outputs['image'][i], outputs['weights_sum'][i].unsqueeze(-1)], dim=-1).reshape(B, H, W, 4).permute(0, 3, 1, 2).contiguous() # [B, 4, H, W]
-            else:
-                pred_rgb = outputs['image'][i].reshape(B, H, W, 3).permute(0, 3, 1, 2).contiguous() # [B, 3, H, W]
-            pred_depths.append(pred_depth)
-            # pred_masks.append(pred_mask)
-            # pred_normals.append(pred_normal)
-            pred_rgbs.append(pred_rgb)
+        pred_depth = outputs['depth'].reshape(B * scales, 1, H, W)
+        pred_mask = outputs['weights_sum'].reshape(B * scales, 1, H, W)
+        if 'normal_image' in outputs:
+            pred_normal = outputs['normal_image'].reshape(B * scales, H, W, 3)
+
+        if as_latent:
+            # abuse normal & mask as latent code for faster geometry initialization (ref: fantasia3D)
+            pred_rgb = torch.cat([outputs['image'], outputs['weights_sum'].unsqueeze(-1)], dim=-1).reshape(B * scales, H, W, 4).permute(0, 3, 1, 2).contiguous() # [B, 4, H, W]
+        else:
+            pred_rgb = outputs['image'].reshape(B * scales, H, W, 3).permute(0, 3, 1, 2).contiguous() # [B, 3, H, W]
+
         # known view loss
         if do_rgbd_loss:
             gt_mask = self.mask # [B, H, W]
@@ -664,13 +659,11 @@ class Trainer(object):
                         text_z.append(r * start_z + (1 - r) * end_z)
 
                 text_z = torch.cat(text_z, dim=0)
-
-                if self.opt.perpneg:
-                    for i in range(scales):
-                        loss = loss + self.guidance['IF'].train_step_perpneg(text_z, weights, pred_rgbs[i], guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance) / 3
-                else:
-                    for i in range(scales):
-                        loss = loss + self.guidance['IF'].train_step(text_z, pred_rgb, guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance)
+                for i in range(scales):
+                    if self.opt.perpneg:
+                        loss = loss + self.guidance['IF'].train_step_perpneg(text_z, weights, pred_rgb[i:i+1], guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance)
+                    else:
+                        loss = loss + self.guidance['IF'].train_step(text_z, pred_rgb[i:i+1], guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance)
                     
             if 'zero123' in self.guidance:
 
@@ -696,12 +689,11 @@ class Trainer(object):
                 loss = loss + self.opt.lambda_opacity * loss_opacity
 
             if self.opt.lambda_entropy > 0:
-                for i in range(scales):
-                    alphas = outputs['weights'][i].clamp(1e-5, 1 - 1e-5)
-                    # alphas = alphas ** 2 # skewed entropy, favors 0 over 1
-                    loss_entropy = (- alphas * torch.log2(alphas) - (1 - alphas) * torch.log2(1 - alphas)).mean()
-                    lambda_entropy = self.opt.lambda_entropy * min(1, 2 * self.global_step / self.opt.iters)
-                    loss = loss + lambda_entropy * loss_entropy / 3
+                alphas = outputs['weights'].clamp(1e-5, 1 - 1e-5)
+                # alphas = alphas ** 2 # skewed entropy, favors 0 over 1
+                loss_entropy = (- alphas * torch.log2(alphas) - (1 - alphas) * torch.log2(1 - alphas)).mean()
+                lambda_entropy = self.opt.lambda_entropy * min(1, 2 * self.global_step / self.opt.iters)
+                loss = loss + lambda_entropy * loss_entropy
 
             if self.opt.lambda_2d_normal_smooth > 0 and 'normal_image' in outputs:
                 # pred_vals = outputs['normal_image'].reshape(B, H, W, 3).permute(0, 3, 1, 2).contiguous()
@@ -1013,7 +1005,7 @@ class Trainer(object):
 
         return outputs
 
-    def train_one_epoch(self, loader, max_epochs, scales=1):
+    def train_one_epoch(self, loader, max_epochs):
         self.log(f"==> [{time.strftime('%Y-%m-%d_%H-%M-%S')}] Start Training {self.workspace} Epoch {self.epoch}/{max_epochs}, lr={self.optimizer.param_groups[0]['lr']:.6f} ...")
 
         total_loss = 0
@@ -1067,7 +1059,7 @@ class Trainer(object):
                         return grad.clamp(-self.opt.grad_clip_rgb, self.opt.grad_clip_rgb)
                 pred_rgbs.register_hook(_hook)
                 # pred_rgbs.retain_grad()
-            # print(loss)
+
             self.scaler.scale(loss).backward()
 
             self.post_train_step()

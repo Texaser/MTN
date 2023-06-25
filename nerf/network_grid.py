@@ -36,7 +36,7 @@ class NeRFNetwork(NeRFRenderer):
     def __init__(self, 
                  opt,
                  num_layers=3,
-                 hidden_dim=64,
+                 hidden_dim=32,
                  num_layers_bg=2,
                  hidden_dim_bg=32,
                  ):
@@ -69,24 +69,20 @@ class NeRFNetwork(NeRFRenderer):
 
         # sigma
         # enc = self.encoder(x, bound=self.bound, max_level=self.max_level)
-        sigma_list = []
-        albedo_list = []
-        encs = self.encoder(x, bound=self.bound)
-        for enc in encs:
-            h = self.sigma_net(enc)
+        enc = self.encoder(x, bound=self.bound)
 
-            sigma = self.density_activation(h[..., 0] + self.density_blob(x))
-            albedo = torch.sigmoid(h[..., 1:])
-            sigma_list.append(sigma)
-            albedo_list.append(albedo)
+        h = self.sigma_net(enc)
 
-        return sigma_list, sigma_list
+        # sigma = self.density_activation(h[..., 0] + self.density_blob(x))
+        # albedo = torch.sigmoid(h[..., 1:])
+        sigma = self.density_activation(h[:, ..., 0] + self.density_blob(x))
+        albedo = torch.sigmoid(h[:, ..., 1:])
+
+        return sigma, albedo
     
     # ref: https://github.com/zhaofuq/Instant-NSR/blob/main/nerf/network_sdf.py#L192
-    def finite_difference_normal(self, x, epsilon=1e-2, scales=1):
+    def finite_difference_normal(self, x, epsilon=1e-2):
         # x: [N, 3]
-        normal_list = []
-
         dx_pos, _ = self.common_forward((x + torch.tensor([[epsilon, 0.00, 0.00]], device=x.device)).clamp(-self.bound, self.bound))
         dx_neg, _ = self.common_forward((x + torch.tensor([[-epsilon, 0.00, 0.00]], device=x.device)).clamp(-self.bound, self.bound))
         dy_pos, _ = self.common_forward((x + torch.tensor([[0.00, epsilon, 0.00]], device=x.device)).clamp(-self.bound, self.bound))
@@ -94,53 +90,49 @@ class NeRFNetwork(NeRFRenderer):
         dz_pos, _ = self.common_forward((x + torch.tensor([[0.00, 0.00, epsilon]], device=x.device)).clamp(-self.bound, self.bound))
         dz_neg, _ = self.common_forward((x + torch.tensor([[0.00, 0.00, -epsilon]], device=x.device)).clamp(-self.bound, self.bound))
         
-        for i in range(scales):
-            normal = torch.stack([
-                0.5 * (dx_pos[i] - dx_neg[i]) / epsilon, 
-                0.5 * (dy_pos[i] - dy_neg[i]) / epsilon, 
-                0.5 * (dz_pos[i] - dz_neg[i]) / epsilon
-            ], dim=-1)
-            normal_list.append(-normal)
-        return normal_list
+        normal = torch.stack([
+            0.5 * (dx_pos - dx_neg) / epsilon, 
+            0.5 * (dy_pos - dy_neg) / epsilon, 
+            0.5 * (dz_pos - dz_neg) / epsilon
+        ], dim=-1)
+
+        return -normal
 
     def normal(self, x):
-        normal_list = self.finite_difference_normal(x)
-        for normal in normal_list:
-            normal = safe_normalize(normal)
-            normal = torch.nan_to_num(normal)
-        return normal_list
+        normal = self.finite_difference_normal(x)
+        normal = safe_normalize(normal)
+        normal = torch.nan_to_num(normal)
+        return normal
     
-    def forward(self, x, d, l=None, ratio=1, shading='albedo', scales=1):
+    def forward(self, x, d, l=None, ratio=1, shading='albedo'):
         # x: [N, 3], in [-bound, bound]
         # d: [N, 3], view direction, nomalized in [-1, 1]
         # l: [3], plane light direction, nomalized in [-1, 1]
         # ratio: scalar, ambient ratio, 1 == no shading (albedo only), 0 == only shading (textureless)
 
-        sigmas, albedos = self.common_forward(x)
+        sigma, albedo = self.common_forward(x)
 
         if shading == 'albedo':
-            normals = None
-            colors = albedos
+            normal = None
+            color = albedo
         
         else: # lambertian shading
 
             # normal = self.normal_net(enc)
-            normals = self.normal(x)
-            colors = []
-            
-            for i, normal in enumerate(normals):
-                lambertian = ratio + (1 - ratio) * (normal * l).sum(-1).clamp(min=0) # [N,]
+            normal = self.normal(x)
 
-                if shading == 'textureless':
-                    color = lambertian.unsqueeze(-1).repeat(1, 3)
-                    # color = lambertian.view(-1, 1).expand_as(normal)
-                elif shading == 'normal':
-                    color = (normal + 1) / 2
-                else: # 'lambertian'
-                    color = albedos[i] * lambertian
-                colors.append(color)
+            lambertian = ratio + (1 - ratio) * (normal * l).sum(-1).clamp(min=0) # [N,]
+
+            if shading == 'textureless':
+                # print(normal.shape)
+                # print(lambertian.shape)
+                color = lambertian.unsqueeze(-1).repeat(1, 1, 3)
+            elif shading == 'normal':
+                color = (normal + 1) / 2
+            else: # 'lambertian'
+                color = albedo * lambertian.unsqueeze(-1)
             
-        return sigmas, colors, normals
+        return sigma, color, normal
 
       
     def density(self, x):
