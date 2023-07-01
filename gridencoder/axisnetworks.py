@@ -744,6 +744,7 @@ class MultiScaleTriplane_Pooling(nn.Module):
             xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z)
             # features = torch.sum(torch.stack([xy_embed, yz_embed, xz_embed]), dim=0)
             features = xy_embed.add_(yz_embed).add_(xz_embed)
+            del xy_embed, yz_embed, xz_embed
             # features_list.append(features[0])
 
             if combined_features is None:
@@ -751,6 +752,7 @@ class MultiScaleTriplane_Pooling(nn.Module):
             else:
                 # Concatenate along a new dimension and avoid keeping all features in memory
                 combined_features = torch.cat((combined_features, features), dim=0)
+                del features
 
             if scale_idx < self.n_scales - 1:
                 plane_x = F.avg_pool2d(plane_x, kernel_size=3, stride=2, padding=1)
@@ -762,7 +764,7 @@ class MultiScaleTriplane_Pooling(nn.Module):
         # combined_features = torch.cat(features_list, dim=0)
         # combined_features = torch.stack(features_list)
         # print(combined_features.shape)
-        del features, plane_x, plane_y, plane_z, xy_embed, yz_embed, xz_embed
+        del plane_x, plane_y, plane_z
 
         # if iteration < 6000:
         #     combined_features = features_list[0]

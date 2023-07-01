@@ -754,6 +754,12 @@ class NeRFRenderer(nn.Module):
             # normals related regularizations
             if self.opt.lambda_orient > 0 and normals is not None:
                 # orientation loss 
+                # print(weights.shape)
+                # print(weights)
+                # print(normals.shape)
+                # print(normals)
+                # print(dirs.shape)
+                # print(dirs)
                 loss_orient = weights.detach() * (normals * dirs).sum(-1).clamp(min=0) ** 2
                 results['loss_orient'] = loss_orient.mean()
             

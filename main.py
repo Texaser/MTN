@@ -1,6 +1,6 @@
 import os 
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-os.environ["CUDA_VISIBLE_DEVICES"] = '2'
+os.environ["CUDA_VISIBLE_DEVICES"] = '3'
 import torch
 import argparse
 import pandas as pd
@@ -368,7 +368,7 @@ if __name__ == '__main__':
         if opt.optim == 'adan':
             from optimizer import Adan
             # Adan usually requires a larger LR
-            optimizer = lambda model: Adan(model.get_params(2 * opt.lr), eps=1e-8, weight_decay=2e-5, max_grad_norm=5.0, foreach=False)
+            optimizer = lambda model: Adan(model.get_params(5 * opt.lr), eps=1e-8, weight_decay=2e-5, max_grad_norm=5.0, foreach=False)
         else: # adam
             optimizer = lambda model: torch.optim.Adam(model.get_params(opt.lr), betas=(0.9, 0.99), eps=1e-15)
 
