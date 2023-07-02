@@ -36,7 +36,7 @@ class NeRFNetwork(NeRFRenderer):
     def __init__(self, 
                  opt,
                  num_layers=3,
-                 hidden_dim=32,
+                 hidden_dim=64,
                  num_layers_bg=2,
                  hidden_dim_bg=32,
                  ):
@@ -46,8 +46,8 @@ class NeRFNetwork(NeRFRenderer):
         self.num_layers = num_layers
         self.hidden_dim = hidden_dim
 
-        # self.encoder, self.in_dim = get_encoder('hashgrid', input_dim=3, log2_hashmap_size=19, desired_resolution=2048 * self.bound, interpolation='smoothstep')
-        self.encoder, self.in_dim = get_encoder('multiscale_triplane_pooling', input_dim=3)
+        self.encoder, self.in_dim = get_encoder('hashgrid', input_dim=3, log2_hashmap_size=19, desired_resolution=2048 * self.bound, interpolation='smoothstep')
+
         self.sigma_net = MLP(self.in_dim, 4, hidden_dim, num_layers, bias=True)
         # self.normal_net = MLP(self.in_dim, 3, hidden_dim, num_layers, bias=True)
 
@@ -68,15 +68,12 @@ class NeRFNetwork(NeRFRenderer):
     def common_forward(self, x):
 
         # sigma
-        # enc = self.encoder(x, bound=self.bound, max_level=self.max_level)
-        enc = self.encoder(x, bound=self.bound)
+        enc = self.encoder(x, bound=self.bound, max_level=self.max_level)
 
         h = self.sigma_net(enc)
 
-        # sigma = self.density_activation(h[..., 0] + self.density_blob(x))
-        # albedo = torch.sigmoid(h[..., 1:])
-        sigma = self.density_activation(h[:, ..., 0] + self.density_blob(x))
-        albedo = torch.sigmoid(h[:, ..., 1:])
+        sigma = self.density_activation(h[..., 0] + self.density_blob(x))
+        albedo = torch.sigmoid(h[..., 1:])
 
         return sigma, albedo
     
@@ -124,9 +121,7 @@ class NeRFNetwork(NeRFRenderer):
             lambertian = ratio + (1 - ratio) * (normal * l).sum(-1).clamp(min=0) # [N,]
 
             if shading == 'textureless':
-                # print(normal.shape)
-                # print(lambertian.shape)
-                color = lambertian.unsqueeze(-1).repeat(1, 1, 3)
+                color = lambertian.unsqueeze(-1).repeat(1, 3)
             elif shading == 'normal':
                 color = (normal + 1) / 2
             else: # 'lambertian'

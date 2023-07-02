@@ -707,7 +707,7 @@ class NeRFRenderer(nn.Module):
         return results
 
 
-    def run_cuda(self, rays_o, rays_d, light_d=None, ambient_ratio=1.0, shading='albedo', bg_color=None, perturb=False, T_thresh=1e-4, binarize=False, scales=3, **kwargs):
+    def run_cuda(self, rays_o, rays_d, light_d=None, ambient_ratio=1.0, shading='albedo', bg_color=None, perturb=False, T_thresh=1e-4, binarize=False, **kwargs):
         # rays_o, rays_d: [B, N, 3]
         # return: image: [B, N, 3], depth: [B, N]
 
@@ -737,29 +737,11 @@ class NeRFRenderer(nn.Module):
                 light_d = light_d[flatten_rays]
             
             sigmas, rgbs, normals = self(xyzs, dirs, light_d, ratio=ambient_ratio, shading=shading)
-            weights_list, weights_sum_list, depth_list, image_list = [], [], [], []
-
-            for i in range(scales):
-                weights, weights_sum, depth, image = raymarching.composite_rays_train(sigmas[i], rgbs[i], ts, rays, T_thresh, binarize)
-                weights_list.append(weights)
-                weights_sum_list.append(weights_sum)
-                depth_list.append(depth)
-                image_list.append(image)
-
-            weights = torch.stack(weights_list)
-            weights_sum = torch.stack(weights_sum_list)
-            depth = torch.stack(depth_list)
-            image = torch.stack(image_list)
-            del weights_list, weights_sum_list, depth_list, image_list
+            weights, weights_sum, depth, image = raymarching.composite_rays_train(sigmas, rgbs, ts, rays, T_thresh, binarize)
+            
             # normals related regularizations
             if self.opt.lambda_orient > 0 and normals is not None:
                 # orientation loss 
-                # print(weights.shape)
-                # print(weights)
-                # print(normals.shape)
-                # print(normals)
-                # print(dirs.shape)
-                # print(dirs)
                 loss_orient = weights.detach() * (normals * dirs).sum(-1).clamp(min=0) ** 2
                 results['loss_orient'] = loss_orient.mean()
             
@@ -804,8 +786,6 @@ class NeRFRenderer(nn.Module):
                 xyzs, dirs, ts = raymarching.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d, self.bound, self.density_bitfield, self.cascade, self.grid_size, nears, fars, perturb if step == 0 else False, self.opt.dt_gamma, self.opt.max_steps)
                 dirs = safe_normalize(dirs)
                 sigmas, rgbs, normals = self(xyzs, dirs, light_d, ratio=ambient_ratio, shading=shading)
-
-                sigmas, rgbs= sigmas[0], rgbs[0]
                 raymarching.composite_rays(n_alive, n_step, rays_alive, rays_t, sigmas, rgbs, ts, weights_sum, depth, image, T_thresh, binarize)
 
                 rays_alive = rays_alive[rays_alive >= 0]
@@ -822,38 +802,16 @@ class NeRFRenderer(nn.Module):
                 bg_color = 1
 
         image = image + (1 - weights_sum).unsqueeze(-1) * bg_color
-        
-        if self.training:
-            image = image.view(prefix[0] * scales, *prefix[1:], 3)
+        image = image.view(*prefix, 3)
 
-            depth = depth.view(prefix[0] * scales, *prefix[1:])
+        depth = depth.view(*prefix)
 
-            weights_sum = weights_sum.reshape(prefix[0] * scales, *prefix[1:])
-        else:
-            image = image.view(prefix[0], *prefix[1:], 3)
-
-            depth = depth.view(prefix[0], *prefix[1:])
-
-            weights_sum = weights_sum.reshape(prefix[0], *prefix[1:])
-
+        weights_sum = weights_sum.reshape(*prefix)
 
         results['image'] = image
         results['depth'] = depth
         results['weights_sum'] = weights_sum
-
         
-        # print(image.shape)
-        # print(depth.shape)
-        # print(weights_sum.shape)
-        # results['image'] = images
-        # results['depth'] = depths
-        # results['weights_sum'] = weights_sums
-        # del weights, weights_sums, depths, images
-        
-        # results['image'] = images
-        # results['depth'] = depths
-        # results['weights_sum'] = weights_sums
-        # del weights, weights_sums, depths, images
         return results
 
     @torch.no_grad()
@@ -1174,7 +1132,7 @@ class NeRFRenderer(nn.Module):
                         # add noise in [-hgs, hgs]
                         cas_xyzs += (torch.rand_like(cas_xyzs) * 2 - 1) * half_grid_size
                         # query density
-                        sigmas = self.density(cas_xyzs)['sigma'][0].reshape(-1).detach()
+                        sigmas = self.density(cas_xyzs)['sigma'].reshape(-1).detach()
                         # assign 
                         tmp_grid[cas, indices] = sigmas
         # ema update

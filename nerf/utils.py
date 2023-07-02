@@ -436,7 +436,7 @@ class Trainer(object):
 
     ### ------------------------------
 
-    def train_step(self, data, save_guidance_path:Path=None, scales=3):
+    def train_step(self, data, save_guidance_path:Path=None):
         """
             Args:
                 save_guidance_path: an image that combines the NeRF render, the added latent noise,
@@ -535,16 +535,16 @@ class Trainer(object):
                 bg_color = torch.rand(3).to(self.device) # single color random bg
 
         outputs = self.model.render(rays_o, rays_d, mvp, H, W, staged=False, perturb=True, bg_color=bg_color, ambient_ratio=ambient_ratio, shading=shading, binarize=binarize)
-        pred_depth = outputs['depth'].reshape(B * scales, 1, H, W)
-        pred_mask = outputs['weights_sum'].reshape(B * scales, 1, H, W)
+        pred_depth = outputs['depth'].reshape(B, 1, H, W)
+        pred_mask = outputs['weights_sum'].reshape(B, 1, H, W)
         if 'normal_image' in outputs:
-            pred_normal = outputs['normal_image'].reshape(B * scales, H, W, 3)
+            pred_normal = outputs['normal_image'].reshape(B, H, W, 3)
 
         if as_latent:
             # abuse normal & mask as latent code for faster geometry initialization (ref: fantasia3D)
-            pred_rgb = torch.cat([outputs['image'], outputs['weights_sum'].unsqueeze(-1)], dim=-1).reshape(B * scales, H, W, 4).permute(0, 3, 1, 2).contiguous() # [B, 4, H, W]
+            pred_rgb = torch.cat([outputs['image'], outputs['weights_sum'].unsqueeze(-1)], dim=-1).reshape(B, H, W, 4).permute(0, 3, 1, 2).contiguous() # [B, 4, H, W]
         else:
-            pred_rgb = outputs['image'].reshape(B * scales, H, W, 3).permute(0, 3, 1, 2).contiguous() # [B, 3, H, W]
+            pred_rgb = outputs['image'].reshape(B, H, W, 3).permute(0, 3, 1, 2).contiguous() # [B, 3, H, W]
 
         # known view loss
         if do_rgbd_loss:
@@ -626,7 +626,7 @@ class Trainer(object):
                 text_z = torch.cat(text_z, dim=0)
                 if self.opt.perpneg:
                     loss = loss + self.guidance['SD'].train_step_perpneg(text_z, weights, pred_rgb, as_latent=as_latent, guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance,
-                                                    save_guidance_path=save_guidance_path) 
+                                                    save_guidance_path=save_guidance_path)
                 else:
                     loss = loss + self.guidance['SD'].train_step(text_z, pred_rgb, as_latent=as_latent, guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance,
                                                                 save_guidance_path=save_guidance_path)
@@ -659,24 +659,23 @@ class Trainer(object):
                         text_z.append(r * start_z + (1 - r) * end_z)
 
                 text_z = torch.cat(text_z, dim=0)
-                for i in range(scales):
-                    if self.opt.perpneg:
-                        # different guidance scale for different scale
-                        loss = loss + self.guidance['IF'].train_step_perpneg(text_z, weights, pred_rgb[i:i+1], guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance, step=self.epoch, scale=i) / 3
-                    else:
-                        loss = loss + self.guidance['IF'].train_step(text_z, pred_rgb[i:i+1], guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance)
+
+                if self.opt.perpneg:
+                    loss = loss + self.guidance['IF'].train_step_perpneg(text_z, weights, pred_rgb, guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance)
+                else:
+                    loss = loss + self.guidance['IF'].train_step(text_z, pred_rgb, guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance)
                     
             if 'zero123' in self.guidance:
 
                 polar = data['polar']
                 azimuth = data['azimuth']
                 radius = data['radius']
-                # print("zero123!!!!!!!!")
+
                 loss = loss + self.guidance['zero123'].train_step(self.embeddings['zero123']['default'], pred_rgb, polar, azimuth, radius, guidance_scale=self.opt.guidance_scale,
                                                                   as_latent=as_latent, grad_scale=self.opt.lambda_guidance, save_guidance_path=save_guidance_path)
 
             if 'clip' in self.guidance:
-                # print("clip!!!!!!!!")
+
                 # empirical, far view should apply smaller CLIP loss
                 lambda_guidance = 10 * (1 - abs(azimuth) / 180) * self.opt.lambda_guidance
 
@@ -684,24 +683,19 @@ class Trainer(object):
 
         # regularizations
         if not self.opt.dmtet:
-            # print("not dmtet!!!!!!!")
+
             if self.opt.lambda_opacity > 0:
-                # print("1111111")
                 loss_opacity = (outputs['weights_sum'] ** 2).mean()
                 loss = loss + self.opt.lambda_opacity * loss_opacity
 
             if self.opt.lambda_entropy > 0:
-                # print("2222222")
-                # print(outputs['weights'].shape)
-                # print(outputs['weights'])
-                alphas = outputs['weights'][0:1].clamp(1e-5, 1 - 1e-5)
+                alphas = outputs['weights'].clamp(1e-5, 1 - 1e-5)
                 # alphas = alphas ** 2 # skewed entropy, favors 0 over 1
                 loss_entropy = (- alphas * torch.log2(alphas) - (1 - alphas) * torch.log2(1 - alphas)).mean()
                 lambda_entropy = self.opt.lambda_entropy * min(1, 2 * self.global_step / self.opt.iters)
                 loss = loss + lambda_entropy * loss_entropy
 
             if self.opt.lambda_2d_normal_smooth > 0 and 'normal_image' in outputs:
-                # print("3333333")
                 # pred_vals = outputs['normal_image'].reshape(B, H, W, 3).permute(0, 3, 1, 2).contiguous()
                 # smoothed_vals = TF.gaussian_blur(pred_vals.detach(), kernel_size=9)
                 # loss_smooth = F.mse_loss(pred_vals, smoothed_vals)
@@ -711,19 +705,15 @@ class Trainer(object):
                 loss = loss + self.opt.lambda_2d_normal_smooth * loss_smooth
 
             if self.opt.lambda_orient > 0 and 'loss_orient' in outputs:
-                # print("444444")
-                # print(outputs['loss_orient'].shape)
-                # print(outputs['loss_orient'])
                 loss_orient = outputs['loss_orient']
                 loss = loss + self.opt.lambda_orient * loss_orient
 
             if self.opt.lambda_3d_normal_smooth > 0 and 'loss_normal_perturb' in outputs:
-                # print("5555555")
                 loss_normal_perturb = outputs['loss_normal_perturb']
                 loss = loss + self.opt.lambda_3d_normal_smooth * loss_normal_perturb
-                
+
         else:
-           
+
             if self.opt.lambda_mesh_normal > 0:
                 loss = loss + self.opt.lambda_mesh_normal * outputs['normal_loss']
 

@@ -122,7 +122,7 @@ class IF(nn.Module):
 
         return loss
 
-    def train_step_perpneg(self, text_embeddings, weights, pred_rgb, guidance_scale=100, grad_scale=1, step=0, scale=-1):
+    def train_step_perpneg(self, text_embeddings, weights, pred_rgb, guidance_scale=100, grad_scale=1):
 
         B = pred_rgb.shape[0]
         K = (text_embeddings.shape[0] // B) - 1 # maximum number of prompts        
@@ -159,37 +159,6 @@ class IF(nn.Module):
         grad = torch.nan_to_num(grad)
 
         # since we omitted an item in grad, we need to use the custom function to specify the gradient
-        # grad = grad * 2 if scale == 0 else grad
-        # grad = grad * 1.5 if scale == 1 else grad
-        # if step < 30:
-        #     grad = grad * 2 / 4.5 if scale == 2 else grad
-        #     grad = grad * 1.5 / 4.5 if scale == 1 else grad
-        # elif step < 40:
-        #     grad = grad * 2 / 4.5 if scale == 1 else grad
-        #     grad = grad * 1.5 / 4.5 if scale == 0 else grad
-        # else:
-        #     grad = grad * 2 / 4.5 if scale == 0 else grad
-        #     grad = grad * 1.5 / 4.5 if scale == 1 else grad
-        # if scale == 0:
-        #     grad = grad * (0.1 + 0.012 * step)
-        # elif scale == 1:
-        #     grad = grad * 0.2
-        # else:
-        #     grad = grad * (0.7 - 0.012 * step)
-        if step < 30:
-            if scale == 0:
-                grad = grad * 0.1
-            elif scale == 1:
-                grad = grad * 0.3
-            else:
-                grad = grad * 0.6
-        else:
-            if scale == 0:
-                grad = grad * 0.8
-            elif scale == 1:
-                grad = grad * 0.1
-            else:
-                grad = grad * 0.1
         loss = SpecifyGradient.apply(images, grad)
 
         return loss
@@ -274,7 +243,6 @@ if __name__ == '__main__':
     # visualize image
     plt.imshow(imgs[0])
     plt.show()
-
 
 
 
