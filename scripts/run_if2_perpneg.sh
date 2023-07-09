@@ -18,3 +18,5 @@ CUDA_VISIBLE_DEVICES=3 python main.py -O --text "shiba wearing sunglasses" --wor
 
 python main.py -O --text "a tiger cub" --workspace trial_perpneg_if_tiger_ms_lr --iters 5000 --IF --batch_size 1 --perpneg
 python main.py -O --text "a shiba dog wearing sunglasses" --workspace trial_perpneg_if_shiba_ms --iters 5000 --IF --batch_size 1 --perpneg
+
+python main.py -O --text "a octopus toy" --workspace trial_tp_octopus --iters 5000 --IF --batch_size 1 --perpneg

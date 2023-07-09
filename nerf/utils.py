@@ -686,6 +686,7 @@ class Trainer(object):
 
             if self.opt.lambda_opacity > 0:
                 loss_opacity = (outputs['weights_sum'] ** 2).mean()
+                # print("lambda_opacity\n", self.opt.lambda_opacity * loss_opacity)
                 loss = loss + self.opt.lambda_opacity * loss_opacity
 
             if self.opt.lambda_entropy > 0:
@@ -693,6 +694,7 @@ class Trainer(object):
                 # alphas = alphas ** 2 # skewed entropy, favors 0 over 1
                 loss_entropy = (- alphas * torch.log2(alphas) - (1 - alphas) * torch.log2(1 - alphas)).mean()
                 lambda_entropy = self.opt.lambda_entropy * min(1, 2 * self.global_step / self.opt.iters)
+                # print("lambda_entropy\n", lambda_entropy * loss_entropy)
                 loss = loss + lambda_entropy * loss_entropy
 
             if self.opt.lambda_2d_normal_smooth > 0 and 'normal_image' in outputs:
@@ -702,14 +704,17 @@ class Trainer(object):
                 # total-variation
                 loss_smooth = (pred_normal[:, 1:, :, :] - pred_normal[:, :-1, :, :]).square().mean() + \
                               (pred_normal[:, :, 1:, :] - pred_normal[:, :, :-1, :]).square().mean()
+                # print("lambda_2d_normal_smooth\n", self.opt.lambda_2d_normal_smooth * loss_smooth)
                 loss = loss + self.opt.lambda_2d_normal_smooth * loss_smooth
 
             if self.opt.lambda_orient > 0 and 'loss_orient' in outputs:
                 loss_orient = outputs['loss_orient']
+                # print("lambda_orient\n", self.opt.lambda_orient * loss_orient)
                 loss = loss + self.opt.lambda_orient * loss_orient
 
             if self.opt.lambda_3d_normal_smooth > 0 and 'loss_normal_perturb' in outputs:
                 loss_normal_perturb = outputs['loss_normal_perturb']
+                # print("lambda_3d_normal_smooth\n", self.opt.lambda_3d_normal_smooth * loss_normal_perturb)
                 loss = loss + self.opt.lambda_3d_normal_smooth * loss_normal_perturb
 
         else:

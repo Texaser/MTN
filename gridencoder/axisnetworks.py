@@ -707,7 +707,7 @@ class MultiScaleTriplane(nn.Module):
     
 
 class MultiScaleTriplane_Pooling(nn.Module):
-    def __init__(self, input_dim=3, n_scales=3, channel=32, grid_size=256):
+    def __init__(self, input_dim=3, n_scales=3, channel=64, grid_size=256):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = channel 
@@ -722,7 +722,8 @@ class MultiScaleTriplane_Pooling(nn.Module):
         assert len(coords2d.shape) == 3, coords2d.shape
         sampled_features = torch.nn.functional.grid_sample(plane,
                                                            coords2d.reshape(coords2d.shape[0], 1, -1, coords2d.shape[-1]),
-                                                           mode='bilinear', padding_mode='zeros', align_corners=True)
+                                                           mode='bicubic', padding_mode='border', align_corners=True)
+        #mode bicubic padding_mode
         N, C, H, W = sampled_features.shape
         sampled_features = sampled_features.reshape(N, C, H*W).permute(0, 2, 1)
         return sampled_features
@@ -731,51 +732,20 @@ class MultiScaleTriplane_Pooling(nn.Module):
         coordinates = (coordinates + bound) / (2 * bound)
         coordinates = coordinates.unsqueeze(0)
 
-        # features_list = []
-        combined_features = None
-
         plane_x = self.plane_x1
         plane_y = self.plane_y1
         plane_z = self.plane_z1
-
-        for scale_idx in range(self.n_scales):
-            xy_embed = self.sample_plane(coordinates[..., 0:2], plane_x)
-            yz_embed = self.sample_plane(coordinates[..., 1:3], plane_y)
-            xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z)
-            # features = torch.sum(torch.stack([xy_embed, yz_embed, xz_embed]), dim=0)
-            features = xy_embed.add_(yz_embed).add_(xz_embed)
-            del xy_embed, yz_embed, xz_embed
-            # features_list.append(features[0])
-
-            if combined_features is None:
-                combined_features = features
-            else:
-                # Concatenate along a new dimension and avoid keeping all features in memory
-                combined_features = torch.cat((combined_features, features), dim=0)
-                del features
-
-            if scale_idx < self.n_scales - 1:
-                plane_x = F.avg_pool2d(plane_x, kernel_size=3, stride=2, padding=1)
-                plane_y = F.avg_pool2d(plane_y, kernel_size=3, stride=2, padding=1)
-                plane_z = F.avg_pool2d(plane_z, kernel_size=3, stride=2, padding=1)
-
-        # Combine features from different scales
-        # print(features.shape)
-        # combined_features = torch.cat(features_list, dim=0)
-        # combined_features = torch.stack(features_list)
-        # print(combined_features.shape)
-        del plane_x, plane_y, plane_z
-
-        # if iteration < 6000:
-        #     combined_features = features_list[0]
-        # elif iteration < 8000:
-        #     combined_features = features_list[1]
-        # else:
-        #     combined_features = features_list[2]
-
-        # del features_list
-
-        return combined_features
+        for _ in range(self.n_scales - 1):
+            plane_x = F.avg_pool2d(plane_x, kernel_size=3, stride=2, padding=1)
+            plane_y = F.avg_pool2d(plane_y, kernel_size=3, stride=2, padding=1)
+            plane_z = F.avg_pool2d(plane_z, kernel_size=3, stride=2, padding=1)
+        # low resolution
+        xy_embed = self.sample_plane(coordinates[..., 0:2], plane_x)
+        yz_embed = self.sample_plane(coordinates[..., 1:3], plane_y)
+        xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z)
+        # features = torch.sum(torch.stack([xy_embed, yz_embed, xz_embed]), dim=0)
+        features = xy_embed.add_(yz_embed).add_(xz_embed)
+        return features[0]
     
 class CartesianPlaneNonSirenEmbeddingNetwork(nn.Module):
     def __init__(self, input_dim=3, output_dim=1):
