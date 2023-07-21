@@ -705,21 +705,44 @@ class MultiScaleTriplane(nn.Module):
 
 #         return combined_features[0]
     
+class ResidualBlock(nn.Module):
+    def __init__(self, channel):
+        super(ResidualBlock, self).__init__()
+        self.conv = nn.Conv2d(channel, channel, kernel_size=3, stride=2, padding=1)
+        self.bn = nn.BatchNorm2d(channel)
+    
+    def forward(self, x):
+        out = F.relu(self.bn(self.conv(x)))
+        return out + F.avg_pool2d(x, kernel_size=3, stride=2, padding=1)
+
 
 class MultiScaleTriplane_Pooling(nn.Module):
-    def __init__(self, input_dim=3, n_scales=3, channel=64, grid_size=256):
+    def __init__(self, input_dim=3, n_scales=3, channel=64, grid_size=256, iteration=0, is_training=True):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = channel 
         self.n_scales = n_scales
-
+        self.res_block = ResidualBlock(channel)
+        # self.conv1 = nn.Conv2d(in_channels=channel, out_channels=channel, kernel_size=3, stride=1, padding=1)
+        # # self.conv2 = nn.Conv2d(in_channels=channel, out_channels=channel, kernel_size=5, stride=2, padding=2)
+        # self.conv3 = nn.Conv2d(in_channels=channel, out_channels=channel, kernel_size=7, stride=4, padding=3)
+        # # self.bn = nn.BatchNorm2d(channel)
+        # nn.init.kaiming_normal_(self.conv1.weight, mode='fan_out', nonlinearity='relu')
+        # nn.init.kaiming_normal_(self.conv3.weight, mode='fan_out', nonlinearity='relu')
+        # nn.init.xavier_normal_(self.conv1.weight)
+        # nn.init.xavier_normal_(self.conv3.weight)
         self.plane_x1 = nn.Parameter(torch.randn(1, channel, grid_size, grid_size) * 0.001)
         self.plane_y1 = nn.Parameter(torch.randn(1, channel, grid_size, grid_size) * 0.001)
         self.plane_z1 = nn.Parameter(torch.randn(1, channel, grid_size, grid_size) * 0.001)
 
 
-    def sample_plane(self, coords2d, plane):
+    def sample_plane(self, coords2d, plane, is_training):
         assert len(coords2d.shape) == 3, coords2d.shape
+        # Generate Gaussian noise with the same shape as coords2d
+        # if self.is_training and self.iteration < 3000:
+        if is_training:
+            noise = torch.normal(mean=0, std=0.01, size=coords2d.shape).to(coords2d.device)
+            coords2d = coords2d + noise
         sampled_features = torch.nn.functional.grid_sample(plane,
                                                            coords2d.reshape(coords2d.shape[0], 1, -1, coords2d.shape[-1]),
                                                            mode='bicubic', padding_mode='border', align_corners=True)
@@ -728,24 +751,131 @@ class MultiScaleTriplane_Pooling(nn.Module):
         sampled_features = sampled_features.reshape(N, C, H*W).permute(0, 2, 1)
         return sampled_features
         
-    def forward(self, coordinates, debug=False, bound=1, iteration=0):
+    def forward(self, coordinates, debug=False, bound=1, iteration=0, is_training=True):
         coordinates = (coordinates + bound) / (2 * bound)
         coordinates = coordinates.unsqueeze(0)
 
         plane_x = self.plane_x1
         plane_y = self.plane_y1
         plane_z = self.plane_z1
-        for _ in range(self.n_scales - 1):
-            plane_x = F.avg_pool2d(plane_x, kernel_size=3, stride=2, padding=1)
-            plane_y = F.avg_pool2d(plane_y, kernel_size=3, stride=2, padding=1)
-            plane_z = F.avg_pool2d(plane_z, kernel_size=3, stride=2, padding=1)
-        # low resolution
-        xy_embed = self.sample_plane(coordinates[..., 0:2], plane_x)
-        yz_embed = self.sample_plane(coordinates[..., 1:3], plane_y)
-        xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z)
-        # features = torch.sum(torch.stack([xy_embed, yz_embed, xz_embed]), dim=0)
+
+        # # CONV
+        # if iteration < 3000:
+        #     conv_fn = self.conv3
+        # else:
+        #     conv_fn = self.conv1
+
+        # plane_x = F.relu(conv_fn(self.plane_x1))
+        # plane_y = F.relu(conv_fn(self.plane_y1))
+        # plane_z = F.relu(conv_fn(self.plane_z1))
+        plane_x = self.res_block(plane_x)
+        plane_y = self.res_block(plane_y)
+        plane_z = self.res_block(plane_z)
+
+
+
+        xy_embed = self.sample_plane(coordinates[..., 0:2], plane_x, is_training)
+        yz_embed = self.sample_plane(coordinates[..., 1:3], plane_y, is_training)
+        xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z, is_training)
+
         features = xy_embed.add_(yz_embed).add_(xz_embed)
+
+        del plane_x, plane_y, plane_z, xy_embed, yz_embed, xz_embed
         return features[0]
+        # if iteration < 3000:
+        #     n_pooling = self.n_scales - 1
+        # else:
+        #     n_pooling = self.n_scales - 2
+
+        # for _ in range(n_pooling):
+        #     plane_x = F.avg_pool2d(plane_x, kernel_size=3, stride=2, padding=1)
+        #     plane_y = F.avg_pool2d(plane_y, kernel_size=3, stride=2, padding=1)
+        #     plane_z = F.avg_pool2d(plane_z, kernel_size=3, stride=2, padding=1)
+
+        # xy_embed = self.sample_plane(coordinates[..., 0:2], plane_x, is_training)
+        # yz_embed = self.sample_plane(coordinates[..., 1:3], plane_y, is_training)
+        # xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z, is_training)
+
+        # features = xy_embed.add_(yz_embed).add_(xz_embed)
+
+        # del plane_x, plane_y, plane_z, xy_embed, yz_embed, xz_embed
+        # # low -> mid/ low -> high
+        # if self.iteration < 3000:
+        #     for _ in range(self.n_scales - 1):
+        #         plane_x = F.avg_pool2d(plane_x, kernel_size=3, stride=2, padding=1)
+        #         plane_y = F.avg_pool2d(plane_y, kernel_size=3, stride=2, padding=1)
+        #         plane_z = F.avg_pool2d(plane_z, kernel_size=3, stride=2, padding=1)
+        #     # low resolution
+        #     xy_embed = self.sample_plane(coordinates[..., 0:2], plane_x)
+        #     yz_embed = self.sample_plane(coordinates[..., 1:3], plane_y)
+        #     xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z)
+        #     # features = torch.sum(torch.stack([xy_embed, yz_embed, xz_embed]), dim=0)
+        #     features = xy_embed.add_(yz_embed).add_(xz_embed)
+
+        # # # only low
+        # # for _ in range(self.n_scales - 1):
+        # #     plane_x = F.avg_pool2d(plane_x, kernel_size=3, stride=2, padding=1)
+        # #     plane_y = F.avg_pool2d(plane_y, kernel_size=3, stride=2, padding=1)
+        # #     plane_z = F.avg_pool2d(plane_z, kernel_size=3, stride=2, padding=1)
+        #     # low resolution
+
+        # else:
+        #     # mid resolution
+        #     plane_x = F.avg_pool2d(plane_x, kernel_size=3, stride=2, padding=1)
+        #     plane_y = F.avg_pool2d(plane_y, kernel_size=3, stride=2, padding=1)
+        #     plane_z = F.avg_pool2d(plane_z, kernel_size=3, stride=2, padding=1)
+        #     xy_embed = self.sample_plane(coordinates[..., 0:2], plane_x)
+        #     yz_embed = self.sample_plane(coordinates[..., 1:3], plane_y)
+        #     xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z)
+        #     # features = torch.sum(torch.stack([xy_embed, yz_embed, xz_embed]), dim=0)
+        #     features = xy_embed.add_(yz_embed).add_(xz_embed)
+        # del plane_x, plane_y, plane_z, xy_embed, yz_embed, xz_embed
+
+        # xy_embed = self.sample_plane(coordinates[..., 0:2], plane_x)
+        # yz_embed = self.sample_plane(coordinates[..., 1:3], plane_y)
+        # xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z)
+        # # features = torch.sum(torch.stack([xy_embed, yz_embed, xz_embed]), dim=0)
+        # features = xy_embed.add_(yz_embed).add_(xz_embed)
+        # # only mid
+        # plane_x = F.avg_pool2d(plane_x, kernel_size=3, stride=2, padding=1)
+        # plane_y = F.avg_pool2d(plane_y, kernel_size=3, stride=2, padding=1)
+        # plane_z = F.avg_pool2d(plane_z, kernel_size=3, stride=2, padding=1)
+        # xy_embed = self.sample_plane(coordinates[..., 0:2], plane_x)
+        # yz_embed = self.sample_plane(coordinates[..., 1:3], plane_y)
+        # xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z)
+        # # features = torch.sum(torch.stack([xy_embed, yz_embed, xz_embed]), dim=0)
+        # features = xy_embed.add_(yz_embed).add_(xz_embed)
+
+
+        # xy_embed_high = self.sample_plane(coordinates[..., 0:2], plane_x, is_training)
+        # yz_embed_high = self.sample_plane(coordinates[..., 1:3], plane_y, is_training)
+        # xz_embed_high = self.sample_plane(coordinates[..., :3:2], plane_z, is_training)
+        
+        # for _ in range(self.n_scales - 1):
+        #     plane_x = F.avg_pool2d(plane_x, kernel_size=3, stride=2, padding=1)
+        #     plane_y = F.avg_pool2d(plane_y, kernel_size=3, stride=2, padding=1)
+        #     plane_z = F.avg_pool2d(plane_z, kernel_size=3, stride=2, padding=1)
+        # #stride conv 1, 2, 4
+        # xy_embed_low = self.sample_plane(coordinates[..., 0:2], plane_x, is_training)
+        # yz_embed_low = self.sample_plane(coordinates[..., 1:3], plane_y, is_training)
+        # xz_embed_low = self.sample_plane(coordinates[..., :3:2], plane_z, is_training)
+
+        # # Gradually increase the weight of high resolution features
+        # alpha = min(1.0, iteration / 3000.0)
+
+        # xy_embed_low = ((1 - alpha) * xy_embed_low).add_(alpha * xy_embed_high)
+        # yz_embed_low = ((1 - alpha) * yz_embed_low).add_(alpha * yz_embed_high)
+        # xz_embed_low = ((1 - alpha) * xz_embed_low).add_(alpha * xz_embed_high)
+
+        # features = xy_embed_low.add_(yz_embed_low).add_(xz_embed_low)
+
+        # del plane_x, plane_y, plane_z, xy_embed_low, yz_embed_low, xz_embed_low, xy_embed_high, yz_embed_high, xz_embed_high
+
+
+
+
+
+        
     
 class CartesianPlaneNonSirenEmbeddingNetwork(nn.Module):
     def __init__(self, input_dim=3, output_dim=1):

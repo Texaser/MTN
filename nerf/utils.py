@@ -273,6 +273,10 @@ class Trainer(object):
             self.optimizer = optim.Adam(self.model.parameters(), lr=0.001, weight_decay=5e-4) # naive adam
         else:
             self.optimizer = optimizer(self.model)
+            self.warm_step = 500
+            self.warmup_lr_schedule = [[] for _ in range(len(self.optimizer.param_groups))]
+            for i in range(len(self.optimizer.param_groups)):
+                self.warmup_lr_schedule[i] = np.linspace(self.optimizer.param_groups[i]['lr'] * 0.1, self.optimizer.param_groups[i]['lr'], self.warm_step)
 
         if lr_scheduler is None:
             self.lr_scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lambda epoch: 1) # fake scheduler
@@ -1011,12 +1015,17 @@ class Trainer(object):
         return outputs
 
     def train_one_epoch(self, loader, max_epochs):
+        if self.global_step < self.warm_step:
+            for i in range(len(self.optimizer.param_groups)):
+                self.optimizer.param_groups[i]['lr'] = self.warmup_lr_schedule[i][self.global_step]
         self.log(f"==> [{time.strftime('%Y-%m-%d_%H-%M-%S')}] Start Training {self.workspace} Epoch {self.epoch}/{max_epochs}, lr={self.optimizer.param_groups[0]['lr']:.6f} ...")
 
         total_loss = 0
         if self.local_rank == 0 and self.report_metric_at_train:
             for metric in self.metrics:
                 metric.clear()
+        
+        
 
         self.model.train()
 

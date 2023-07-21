@@ -268,7 +268,7 @@ class NeRFRenderer(nn.Module):
         self.taichi_ray = opt.taichi_ray
         self.min_near = opt.min_near
         self.density_thresh = opt.density_thresh
-
+        self.train_step = 0
         # prepare aabb with a 6D tensor (xmin, ymin, zmin, xmax, ymax, zmax)
         # NOTE: aabb (can be rectangular) is only used to generate points, we still rely on bound (always cubic) to calculate density grid and hashing.
         aabb_train = torch.FloatTensor([-opt.bound, -opt.bound, -opt.bound, opt.bound, opt.bound, opt.bound])
@@ -729,6 +729,8 @@ class NeRFRenderer(nn.Module):
         results = {}
 
         if self.training:
+            self.train_step += 1
+            # print(self.train_epoch)
             xyzs, dirs, ts, rays = raymarching.march_rays_train(rays_o, rays_d, self.bound, self.density_bitfield, self.cascade, self.grid_size, nears, fars, perturb, self.opt.dt_gamma, self.opt.max_steps)
             dirs = safe_normalize(dirs)
 
