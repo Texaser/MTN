@@ -579,18 +579,31 @@ class MultiTriplane(nn.Module):
         return l/self.num_objs
     
 class MultiScaleTriplane(nn.Module):
-    def __init__(self, input_dim=3, n_scales=3, iteration=0):
+    def __init__(self, input_dim=3, n_scales=3, channel=64, iteration=0, is_training=True, grid_size=256):
         super().__init__()
         self.input_dim = input_dim
-        self.output_dim = 32 * n_scales
+        self.output_dim = channel * n_scales
         self.n_scales = n_scales
 
+        # self.embeddings = nn.ModuleList([
+        #     nn.ParameterList([
+        #         nn.Parameter(torch.randn(1, channel, 256 // (2 ** i), 256 // (2 ** i)) * 0.001)
+        #         for _ in range(3)
+        #     ])
+        #     for i in range(n_scales)
+        # ])
+        self.plane_x1 = nn.Parameter(torch.randn(1, channel, grid_size, grid_size) * 0.001)
+        self.plane_y1 = nn.Parameter(torch.randn(1, channel, grid_size, grid_size) * 0.001)
+        self.plane_z1 = nn.Parameter(torch.randn(1, channel, grid_size, grid_size) * 0.001)
+
         self.embeddings = nn.ModuleList([
-            nn.ParameterList([
-                nn.Parameter(torch.randn(1, 32, 256 // (2 ** i), 256 // (2 ** i)) * 0.001)
-                for _ in range(3)
-            ])
-            for i in range(n_scales)
+            nn.ParameterList([self.plane_x1, self.plane_y1, self.plane_z1]),
+            nn.ParameterList([F.avg_pool2d(self.plane_x1, kernel_size=3, stride=2, padding=1),
+                              F.avg_pool2d(self.plane_y1, kernel_size=3, stride=2, padding=1),
+                              F.avg_pool2d(self.plane_z1, kernel_size=3, stride=2, padding=1)]),
+            nn.ParameterList([F.avg_pool2d(F.avg_pool2d(self.plane_x1, kernel_size=3, stride=2, padding=1), kernel_size=3, stride=2, padding=1),
+                              F.avg_pool2d(F.avg_pool2d(self.plane_y1, kernel_size=3, stride=2, padding=1), kernel_size=3, stride=2, padding=1),
+                              F.avg_pool2d(F.avg_pool2d(self.plane_z1, kernel_size=3, stride=2, padding=1), kernel_size=3, stride=2, padding=1)])
         ])
 
         # Define the rest of the network (self.net) as before
@@ -599,25 +612,43 @@ class MultiScaleTriplane(nn.Module):
         assert len(coords2d.shape) == 3, coords2d.shape
         sampled_features = torch.nn.functional.grid_sample(plane,
                                                            coords2d.reshape(coords2d.shape[0], 1, -1, coords2d.shape[-1]),
-                                                           mode='bilinear', padding_mode='zeros', align_corners=True)
+                                                           mode='bicubic', padding_mode='border', align_corners=True)
         N, C, H, W = sampled_features.shape
         sampled_features = sampled_features.reshape(N, C, H*W).permute(0, 2, 1)
         return sampled_features
         
-    def forward(self, coordinates, debug=False, bound=1, iteration=0):
+    def forward(self, coordinates, debug=False, bound=1, iteration=0, is_training=True, channel=64):
         coordinates = (coordinates + bound) / (2 * bound)
         coordinates = coordinates.unsqueeze(0)
+        
+        combined_features = torch.zeros(coordinates.shape[0], coordinates.shape[1], self.output_dim, device=coordinates.device)
 
-        features_list = []
         for scale_idx in range(self.n_scales):
             xy_embed = self.sample_plane(coordinates[..., 0:2], self.embeddings[scale_idx][0])
             yz_embed = self.sample_plane(coordinates[..., 1:3], self.embeddings[scale_idx][1])
             xz_embed = self.sample_plane(coordinates[..., :3:2], self.embeddings[scale_idx][2])
 
-            features = xy_embed.add_(yz_embed).add_(xz_embed)
-            # features = torch.sum(torch.stack([xy_embed, yz_embed, xz_embed]), dim=0)
-            features_list.append(features)
+            combined_features[..., scale_idx*channel:(scale_idx+1)*channel] = xy_embed.add_(yz_embed).add_(xz_embed)
 
+
+        return combined_features[0]
+        # coordinates = (coordinates + bound) / (2 * bound)
+        # coordinates = coordinates.unsqueeze(0)
+
+        # features_list = []
+        # for scale_idx in range(self.n_scales):
+        #     xy_embed = self.sample_plane(coordinates[..., 0:2], self.embeddings[scale_idx][0])
+        #     yz_embed = self.sample_plane(coordinates[..., 1:3], self.embeddings[scale_idx][1])
+        #     xz_embed = self.sample_plane(coordinates[..., :3:2], self.embeddings[scale_idx][2])
+
+        #     xy_embed.add_(yz_embed).add_(xz_embed)
+        #     # features = torch.sum(torch.stack([xy_embed, yz_embed, xz_embed]), dim=0)
+        #     features_list.append(xy_embed)
+
+        # # CONCAT
+        # combined_features = torch.cat(features_list, dim=-1)
+        # del features_list
+        # return combined_features[0]
         # Combine features from different scales
 
         # ADD
@@ -625,9 +656,6 @@ class MultiScaleTriplane(nn.Module):
         # for feature in features_list[1:]:
         #     combined_features += feature
 
-        # CONCAT
-        combined_features = torch.cat(features_list, dim=-1)
-        return combined_features[0]
     
 
 # class MultiScaleTriplane_Pooling(nn.Module):
@@ -717,12 +745,13 @@ class ResidualBlock(nn.Module):
 
 
 class MultiScaleTriplane_Pooling(nn.Module):
-    def __init__(self, input_dim=3, n_scales=3, channel=64, grid_size=256, iteration=0, is_training=True):
+    def __init__(self, input_dim=3, n_scales=4, channel=96, grid_size=512, iteration=0, is_training=True):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = channel 
         self.n_scales = n_scales
-        self.res_block = ResidualBlock(channel)
+        self.iteration = iteration
+        # self.res_block = ResidualBlock(channel)
         # self.conv1 = nn.Conv2d(in_channels=channel, out_channels=channel, kernel_size=3, stride=1, padding=1)
         # # self.conv2 = nn.Conv2d(in_channels=channel, out_channels=channel, kernel_size=5, stride=2, padding=2)
         # self.conv3 = nn.Conv2d(in_channels=channel, out_channels=channel, kernel_size=7, stride=4, padding=3)
@@ -734,14 +763,22 @@ class MultiScaleTriplane_Pooling(nn.Module):
         self.plane_x1 = nn.Parameter(torch.randn(1, channel, grid_size, grid_size) * 0.001)
         self.plane_y1 = nn.Parameter(torch.randn(1, channel, grid_size, grid_size) * 0.001)
         self.plane_z1 = nn.Parameter(torch.randn(1, channel, grid_size, grid_size) * 0.001)
-
-
+        self.plane_x2 = nn.Parameter(torch.randn(1, channel, grid_size // 2, grid_size // 2) * 0.001)
+        self.plane_y2 = nn.Parameter(torch.randn(1, channel, grid_size // 2, grid_size // 2) * 0.001)
+        self.plane_z2 = nn.Parameter(torch.randn(1, channel, grid_size // 2, grid_size // 2) * 0.001)
+        self.plane_x3 = nn.Parameter(torch.randn(1, channel, grid_size // 4, grid_size // 4) * 0.001)
+        self.plane_y3 = nn.Parameter(torch.randn(1, channel, grid_size // 4, grid_size // 4) * 0.001)
+        self.plane_z3 = nn.Parameter(torch.randn(1, channel, grid_size // 4, grid_size // 4) * 0.001)
+        self.plane_x4 = nn.Parameter(torch.randn(1, channel, grid_size // 8, grid_size // 8) * 0.001)
+        self.plane_y4 = nn.Parameter(torch.randn(1, channel, grid_size // 8, grid_size // 8) * 0.001)
+        self.plane_z4 = nn.Parameter(torch.randn(1, channel, grid_size // 8, grid_size // 8) * 0.001)
+        
     def sample_plane(self, coords2d, plane, is_training):
         assert len(coords2d.shape) == 3, coords2d.shape
         # Generate Gaussian noise with the same shape as coords2d
         # if self.is_training and self.iteration < 3000:
         if is_training:
-            noise = torch.normal(mean=0, std=0.01, size=coords2d.shape).to(coords2d.device)
+            noise = torch.normal(mean=0, std=0.005, size=coords2d.shape).to(coords2d.device)
             coords2d = coords2d + noise
         sampled_features = torch.nn.functional.grid_sample(plane,
                                                            coords2d.reshape(coords2d.shape[0], 1, -1, coords2d.shape[-1]),
@@ -754,10 +791,42 @@ class MultiScaleTriplane_Pooling(nn.Module):
     def forward(self, coordinates, debug=False, bound=1, iteration=0, is_training=True):
         coordinates = (coordinates + bound) / (2 * bound)
         coordinates = coordinates.unsqueeze(0)
+        # Update the iteration attribute
+        # self.iteration = iteration
+        # plane_x4 = self.plane_x4.clone() if iteration > 3000 else self.plane_x4
+        # plane_y4 = self.plane_y4.clone() if iteration > 3000 else self.plane_y4
+        # plane_z4 = self.plane_z4.clone() if iteration > 3000 else self.plane_z4
 
-        plane_x = self.plane_x1
-        plane_y = self.plane_y1
-        plane_z = self.plane_z1
+        # plane_x3 = self.plane_x3.clone() if iteration > 4000 else self.plane_x3
+        # plane_y3 = self.plane_y3.clone() if iteration > 4000 else self.plane_y3
+        # plane_z3 = self.plane_z3.clone() if iteration > 4000 else self.plane_z3
+
+        # plane_x2 = self.plane_x2.clone() if iteration > 5000 else self.plane_x2
+        # plane_y2 = self.plane_y2.clone() if iteration > 5000 else self.plane_y2
+        # plane_z2 = self.plane_z2.clone() if iteration > 5000 else self.plane_z2
+
+        # xy_embed = self.sample_plane(coordinates[..., 0:2], plane_x4, is_training)
+        # yz_embed = self.sample_plane(coordinates[..., 1:3], plane_y4, is_training)
+        # xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z4, is_training)
+        
+        # if iteration > 3000:
+        #     xy_embed.add_(1 * self.sample_plane(coordinates[..., 0:2], plane_x3, is_training))
+        #     yz_embed.add_(1 * self.sample_plane(coordinates[..., 1:3], plane_y3, is_training))
+        #     xz_embed.add_(1 * self.sample_plane(coordinates[..., :3:2], plane_z3, is_training))
+        # if iteration > 4000:
+        #     xy_embed.add_(1 * self.sample_plane(coordinates[..., 0:2], plane_x2, is_training))
+        #     yz_embed.add_(1 * self.sample_plane(coordinates[..., 1:3], plane_y2, is_training))
+        #     xz_embed.add_(1 * self.sample_plane(coordinates[..., :3:2], plane_z2, is_training))
+        # if iteration > 5000:
+        #     xy_embed.add_(1 * self.sample_plane(coordinates[..., 0:2], self.plane_x1, is_training))
+        #     yz_embed.add_(1 * self.sample_plane(coordinates[..., 1:3], self.plane_y1, is_training))
+        #     xz_embed.add_(1 * self.sample_plane(coordinates[..., :3:2], self.plane_z1, is_training))
+
+        # xy_embed = self.sample_plane(coordinates[..., 0:2], self.plane_x4, is_training)
+        # yz_embed = self.sample_plane(coordinates[..., 1:3], self.plane_y4, is_training)
+        # xz_embed = self.sample_plane(coordinates[..., :3:2], self.plane_z4, is_training)
+        # xy_embed.add_(yz_embed).add_(xz_embed)
+        # return xy_embed[0]
 
         # # CONV
         # if iteration < 3000:
@@ -768,34 +837,27 @@ class MultiScaleTriplane_Pooling(nn.Module):
         # plane_x = F.relu(conv_fn(self.plane_x1))
         # plane_y = F.relu(conv_fn(self.plane_y1))
         # plane_z = F.relu(conv_fn(self.plane_z1))
-        plane_x = self.res_block(plane_x)
-        plane_y = self.res_block(plane_y)
-        plane_z = self.res_block(plane_z)
+        # plane_x = self.res_block(plane_x)
+        # plane_y = self.res_block(plane_y)
+        # plane_z = self.res_block(plane_z)
 
 
 
-        xy_embed = self.sample_plane(coordinates[..., 0:2], plane_x, is_training)
-        yz_embed = self.sample_plane(coordinates[..., 1:3], plane_y, is_training)
-        xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z, is_training)
-
-        features = xy_embed.add_(yz_embed).add_(xz_embed)
-
-        del plane_x, plane_y, plane_z, xy_embed, yz_embed, xz_embed
-        return features[0]
         # if iteration < 3000:
         #     n_pooling = self.n_scales - 1
         # else:
         #     n_pooling = self.n_scales - 2
-
-        # for _ in range(n_pooling):
+        plane_x, plane_y, plane_z = self.plane_x4, self.plane_y4, self.plane_z4
+        # for _ in range(2):
         #     plane_x = F.avg_pool2d(plane_x, kernel_size=3, stride=2, padding=1)
         #     plane_y = F.avg_pool2d(plane_y, kernel_size=3, stride=2, padding=1)
         #     plane_z = F.avg_pool2d(plane_z, kernel_size=3, stride=2, padding=1)
 
-        # xy_embed = self.sample_plane(coordinates[..., 0:2], plane_x, is_training)
-        # yz_embed = self.sample_plane(coordinates[..., 1:3], plane_y, is_training)
-        # xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z, is_training)
-
+        xy_embed = self.sample_plane(coordinates[..., 0:2], plane_x, is_training)
+        yz_embed = self.sample_plane(coordinates[..., 1:3], plane_y, is_training)
+        xz_embed = self.sample_plane(coordinates[..., :3:2], plane_z, is_training)
+        features = xy_embed.add_(yz_embed).add_(xz_embed)
+        return features[0]
         # features = xy_embed.add_(yz_embed).add_(xz_embed)
 
         # del plane_x, plane_y, plane_z, xy_embed, yz_embed, xz_embed

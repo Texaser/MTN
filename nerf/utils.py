@@ -276,7 +276,7 @@ class Trainer(object):
             self.warm_step = 500
             self.warmup_lr_schedule = [[] for _ in range(len(self.optimizer.param_groups))]
             for i in range(len(self.optimizer.param_groups)):
-                self.warmup_lr_schedule[i] = np.linspace(self.optimizer.param_groups[i]['lr'] * 0.1, self.optimizer.param_groups[i]['lr'], self.warm_step)
+                self.warmup_lr_schedule[i] = np.linspace(self.optimizer.param_groups[i]['lr'] * 0.3, self.optimizer.param_groups[i]['lr'], self.warm_step)
 
         if lr_scheduler is None:
             self.lr_scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lambda epoch: 1) # fake scheduler
