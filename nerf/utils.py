@@ -30,7 +30,9 @@ from rich.console import Console
 from torch_ema import ExponentialMovingAverage
 
 from packaging import version as pver
+# from accelerate import Accelerator
 
+# accelerator = Accelerator()
 def adjust_text_embeddings(embeddings, azimuth, opt):
     text_z_list = []
     weights_list = []
@@ -243,7 +245,7 @@ class Trainer(object):
         self.scheduler_update_every_step = scheduler_update_every_step
         self.device = device if device is not None else torch.device(f'cuda:{local_rank}' if torch.cuda.is_available() else 'cpu')
         self.console = Console()
-
+        # self.device = accelerator.device
         model.to(self.device)
         if self.world_size > 1:
             model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
@@ -273,10 +275,10 @@ class Trainer(object):
             self.optimizer = optim.Adam(self.model.parameters(), lr=0.001, weight_decay=5e-4) # naive adam
         else:
             self.optimizer = optimizer(self.model)
-            self.warm_step = 500
+            self.warm_step = self.opt.warm_iters
             self.warmup_lr_schedule = [[] for _ in range(len(self.optimizer.param_groups))]
             for i in range(len(self.optimizer.param_groups)):
-                self.warmup_lr_schedule[i] = np.linspace(self.optimizer.param_groups[i]['lr'] * 0.3, self.optimizer.param_groups[i]['lr'], self.warm_step)
+                self.warmup_lr_schedule[i] = np.linspace(self.optimizer.param_groups[i]['lr'] * 0.2, self.optimizer.param_groups[i]['lr'], self.warm_step)
 
         if lr_scheduler is None:
             self.lr_scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lambda epoch: 1) # fake scheduler
@@ -287,6 +289,7 @@ class Trainer(object):
             self.ema = ExponentialMovingAverage(self.model.parameters(), decay=ema_decay)
         else:
             self.ema = None
+
 
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.fp16)
 
@@ -536,6 +539,7 @@ class Trainer(object):
             if self.opt.bg_radius > 0 and rand > 0.5:
                 bg_color = None # use bg_net
             else:
+                # bg_color = torch.rand(3).to(self.device) # single color random bg
                 bg_color = torch.rand(3).to(self.device) # single color random bg
 
         outputs = self.model.render(rays_o, rays_d, mvp, H, W, staged=False, perturb=True, bg_color=bg_color, ambient_ratio=ambient_ratio, shading=shading, binarize=binarize)
@@ -665,7 +669,7 @@ class Trainer(object):
                 text_z = torch.cat(text_z, dim=0)
 
                 if self.opt.perpneg:
-                    loss = loss + self.guidance['IF'].train_step_perpneg(text_z, weights, pred_rgb, guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance)
+                    loss = loss + self.guidance['IF'].train_step_perpneg(text_z, weights, pred_rgb, guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance, global_step=self.global_step, max_step = self.opt.iters)
                 else:
                     loss = loss + self.guidance['IF'].train_step(text_z, pred_rgb, guidance_scale=self.opt.guidance_scale, grad_scale=self.opt.lambda_guidance)
                     
@@ -708,7 +712,7 @@ class Trainer(object):
                 # total-variation
                 loss_smooth = (pred_normal[:, 1:, :, :] - pred_normal[:, :-1, :, :]).square().mean() + \
                               (pred_normal[:, :, 1:, :] - pred_normal[:, :, :-1, :]).square().mean()
-                # print("lambda_2d_normal_smooth\n", self.opt.lambda_2d_normal_smooth * loss_smooth)
+                print("lambda_2d_normal_smooth\n", self.opt.lambda_2d_normal_smooth * loss_smooth)
                 loss = loss + self.opt.lambda_2d_normal_smooth * loss_smooth
 
             if self.opt.lambda_orient > 0 and 'loss_orient' in outputs:
@@ -718,9 +722,16 @@ class Trainer(object):
 
             if self.opt.lambda_3d_normal_smooth > 0 and 'loss_normal_perturb' in outputs:
                 loss_normal_perturb = outputs['loss_normal_perturb']
-                # print("lambda_3d_normal_smooth\n", self.opt.lambda_3d_normal_smooth * loss_normal_perturb)
+                print("lambda_3d_normal_smooth\n", self.opt.lambda_3d_normal_smooth * loss_normal_perturb)
                 loss = loss + self.opt.lambda_3d_normal_smooth * loss_normal_perturb
+            
+            if self.opt.lambda_grid_tv_reg > 0:
+                # print("lambda_grid_tv_reg\n", self.model.encoder.tvreg(self.global_step) * self.opt.lambda_grid_tv_reg)
+                loss = loss + self.model.encoder.tvreg(self.global_step) * self.opt.lambda_grid_tv_reg
 
+            if self.opt.lambda_grid_l2_reg > 0:
+                # print("lambda_grid_l2_reg\n", self.model.encoder.l2reg(self.global_step) * self.opt.lambda_grid_l2_reg)
+                loss = loss + self.model.encoder.l2reg(self.global_step) * self.opt.lambda_grid_l2_reg
         else:
 
             if self.opt.lambda_mesh_normal > 0:
@@ -809,7 +820,9 @@ class Trainer(object):
     ### ------------------------------
 
     def train(self, train_loader, valid_loader, test_loader, max_epochs):
-
+        # self.model, self.optimizer, train_loader, self.lr_scheduler = accelerator.prepare(
+        #     self.model, self.optimizer, train_loader, self.lr_scheduler
+        # )
         if self.use_tensorboardX and self.local_rank == 0:
             self.writer = tensorboardX.SummaryWriter(os.path.join(self.workspace, "run", self.name))
 
@@ -1035,7 +1048,8 @@ class Trainer(object):
             loader.sampler.set_epoch(self.epoch)
 
         if self.local_rank == 0:
-            pbar = tqdm.tqdm(total=len(loader) * loader.batch_size, bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
+            # pbar = tqdm.tqdm(total=len(loader) * loader.batch_size, bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
+            pbar = tqdm.tqdm(total=len(loader) * 1, bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
 
         self.local_step = 0
 
@@ -1075,7 +1089,7 @@ class Trainer(object):
                 # pred_rgbs.retain_grad()
 
             self.scaler.scale(loss).backward()
-
+            # accelerator.backward(self.scaler.scale(loss))
             self.post_train_step()
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -1099,7 +1113,7 @@ class Trainer(object):
                     pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f}), lr={self.optimizer.param_groups[0]['lr']:.6f}")
                 else:
                     pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f})")
-                pbar.update(loader.batch_size)
+                pbar.update(1)
 
         if self.ema is not None:
             self.ema.update()

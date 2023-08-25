@@ -796,13 +796,13 @@ class NeRFRenderer(nn.Module):
                 step += n_step
 
         # mix background color
-        if bg_color is None:
-            if self.opt.bg_radius > 0:
-                # use the bg model to calculate bg_color
-                bg_color = self.background(rays_d) # [N, 3]
-            else:
-                bg_color = 1
-
+        # if bg_color is None:
+        #     if self.opt.bg_radius > 0:
+        #         # use the bg model to calculate bg_color
+        #         bg_color = self.background(rays_d) # [N, 3]
+        #     else:
+        #         bg_color = 1
+        bg_color = 1
         image = image + (1 - weights_sum).unsqueeze(-1) * bg_color
         image = image.view(*prefix, 3)
 

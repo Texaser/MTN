@@ -65,12 +65,41 @@ class IF(nn.Module):
         self.scheduler = pipe.scheduler
 
         self.pipe = pipe
-
         self.num_train_timesteps = self.scheduler.config.num_train_timesteps
         self.min_step = int(self.num_train_timesteps * t_range[0])
         self.max_step = int(self.num_train_timesteps * t_range[1])
         self.alphas = self.scheduler.alphas_cumprod.to(self.device) # for convenience
-
+        self.time_prior = [800, 500, 300, 100]
+        m1, m2, s1, s2 = self.time_prior
+        weights = torch.cat(
+            (
+                torch.exp(
+                    -(torch.arange(self.num_train_timesteps, m1, -1) - m1)
+                        / (2 * s1)
+                    ),
+                torch.ones(m1 - m2 + 1),
+                torch.exp(
+                        -(torch.arange(m2 - 1, 0, -1) - m2) / (2 * s2)
+                    ),
+            )
+        )
+        # weights = torch.cat(
+        #           (
+        #               torch.exp(
+                      
+        #                   -((torch.arange(self.num_train_timesteps, m1, -1) - m1) ** 2)
+        #                   / (2 * s1**2)
+        #               ),
+        #               torch.ones(m1 - m2 + 1),
+        #               torch.exp(
+        #                   -((torch.arange(m2 - 1, 0, -1) - m2) ** 2) / (2 * s2**2)
+        #               ),
+        #           )
+        #       )
+        weights = weights / torch.sum(weights)
+        self.time_prior_acc_weights = torch.cumsum(weights, dim=0)
+        self.iters = 6000
+        self.t_choice = self.t_choice_nonlinear(self.iters)
         print(f'[INFO] loaded DeepFloyd IF-I-XL!')
 
     @torch.no_grad()
@@ -122,7 +151,7 @@ class IF(nn.Module):
 
         return loss
 
-    def train_step_perpneg(self, text_embeddings, weights, pred_rgb, guidance_scale=100, grad_scale=1):
+    def train_step_perpneg(self, text_embeddings, weights, pred_rgb, guidance_scale=100, grad_scale=1, global_step=0, max_step=0):
 
         B = pred_rgb.shape[0]
         K = (text_embeddings.shape[0] // B) - 1 # maximum number of prompts        
@@ -131,8 +160,15 @@ class IF(nn.Module):
         images = F.interpolate(pred_rgb, (64, 64), mode='bilinear', align_corners=False) * 2 - 1
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
-        t = torch.randint(self.min_step, self.max_step + 1, (images.shape[0],), dtype=torch.long, device=self.device)
-
+        # t = torch.randint(self.min_step, self.max_step + 1, (images.shape[0],), dtype=torch.long, device=self.device)
+        if global_step <= 5000:
+            t = self.t_choice[global_step - 1]
+        else:
+            t = torch.randint(self.min_step, self.max_step + 1, (images.shape[0],), dtype=torch.long, device=self.device)
+        # t = self.t_choice[global_step - 1]
+        # print(t)
+        # t = self.t_choice(global_step)
+        # print(t)
         # predict the noise residual with unet, NO grad!
         with torch.no_grad():
             # add noise
@@ -150,14 +186,16 @@ class IF(nn.Module):
             # noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
             delta_noise_preds = noise_pred_text - noise_pred_uncond.repeat(K, 1, 1, 1)
             noise_pred = noise_pred_uncond + guidance_scale * weighted_perpendicular_aggregator(delta_noise_preds, weights, B)
-
+            #统计一下 grad 直方图
 
 
         # w(t), sigma_t^2
         w = (1 - self.alphas[t])
         grad = grad_scale * w[:, None, None, None] * (noise_pred - noise)
         grad = torch.nan_to_num(grad)
-
+        # if global_step % 100 == 0:
+        #     filename = f"./trial_test_res_rabbit_1_test/grad/grad_at_step_{global_step}.pt"
+        #     torch.save(grad, filename)
         # since we omitted an item in grad, we need to use the custom function to specify the gradient
         loss = SpecifyGradient.apply(images, grad)
 
@@ -215,7 +253,37 @@ class IF(nn.Module):
         imgs = (imgs * 255).round().astype('uint8')
 
         return imgs
+    
+    def t_choice_linear(self, global_step: int):
+        value = [0, 0.98, 0.5, 5000]
+        #[0, 0.98, 0.5, 5000]
+        start_step, start_value, end_value, end_step = value
+        current_step = global_step
+        # 0.98 - 0.48 * min(1,  1000 / 5000)
+        value = start_value + (end_value - start_value) * min(1.0, 
+            (current_step - start_step) / (end_step - start_step))
 
+        return torch.tensor([int(value * self.num_train_timesteps)], dtype=torch.long, device=self.device)
+    
+    def t_choice_nonlinear(self, max_step: int):
+        t_choice = []
+        for i in range(0, max_step):
+            current_step_ratio = i / max_step
+            time_index = torch.where(
+                        (self.time_prior_acc_weights - current_step_ratio) > 0
+                    )[0][0]
+            if time_index == 0 or torch.abs(
+                self.time_prior_acc_weights[time_index] - current_step_ratio
+            ) < torch.abs(
+                self.time_prior_acc_weights[time_index - 1] - current_step_ratio
+            ):
+                t = self.num_train_timesteps - time_index
+            else:
+                t = self.num_train_timesteps - time_index + 1
+            t = torch.clip(t, self.min_step, self.max_step + 1)
+            t = torch.full((1,), t, dtype=torch.long, device=self.device)
+            t_choice.append(t)
+        return t_choice
 
 if __name__ == '__main__':
 

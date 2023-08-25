@@ -1,11 +1,13 @@
 import os 
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-os.environ["CUDA_VISIBLE_DEVICES"] = '2'
+os.environ["CUDA_VISIBLE_DEVICES"] = '3'
 import torch
 import argparse
 import pandas as pd
 import sys
+# from accelerate import Accelerator
 
+# accelerator = Accelerator()
 from nerf.provider import NeRFDataset
 from nerf.utils import *
 
@@ -27,7 +29,7 @@ if __name__ == '__main__':
     parser.add_argument('-O2', action='store_true', help="equals --backbone vanilla")
     parser.add_argument('--test', action='store_true', help="test mode")
     parser.add_argument('--six_views', action='store_true', help="six_views mode: save the images of the six views")
-    parser.add_argument('--eval_interval', type=int, default=1, help="evaluate on the valid set every interval epochs")
+    parser.add_argument('--eval_interval', type=int, default=5, help="evaluate on the valid set every interval epochs")
     parser.add_argument('--test_interval', type=int, default=100, help="test on the test set every interval epochs")
     parser.add_argument('--workspace', type=str, default='workspace')
     parser.add_argument('--seed', default=3407)
@@ -58,7 +60,8 @@ if __name__ == '__main__':
     parser.add_argument('--side_decay_factor', type=float, default=10, help="decay factor for the side prompt")
 
     ### training options
-    parser.add_argument('--iters', type=int, default=10000, help="training iters")
+    parser.add_argument('--iters', type=int, default=6000, help="training iters")
+    parser.add_argument('--warm_iters', type=int, default=600, help="training iters")
     parser.add_argument('--lr', type=float, default=1e-3, help="max learning rate")
     parser.add_argument('--ckpt', type=str, default='latest', help="possible options are ['latest', 'scratch', 'best', 'latest_model']")
     parser.add_argument('--cuda_ray', action='store_true', help="use CUDA raymarching instead of pytorch")
@@ -80,7 +83,7 @@ if __name__ == '__main__':
     parser.add_argument('--grad_clip', type=float, default=-1, help="clip grad of all grad to this limit, negative value disables it")
     parser.add_argument('--grad_clip_rgb', type=float, default=-1, help="clip grad of rgb space grad to this limit, negative value disables it")
     # model options
-    parser.add_argument('--bg_radius', type=float, default=1.4, help="if positive, use a background model at sphere(bg_radius)")
+    parser.add_argument('--bg_radius', type=float, default=-1, help="if positive, use a background model at sphere(bg_radius)") #1.4
     parser.add_argument('--density_activation', type=str, default='exp', choices=['softplus', 'exp'], help="density activation function")
     parser.add_argument('--density_thresh', type=float, default=10, help="threshold for density grid to be occupied")
     parser.add_argument('--blob_density', type=float, default=5, help="max (center) density for the density blob")
@@ -92,7 +95,7 @@ if __name__ == '__main__':
     parser.add_argument('--hf_key', type=str, default=None, help="hugging face Stable diffusion model key")
     # try this if CUDA OOM
     parser.add_argument('--fp16', action='store_true', help="use float16 for training")
-    parser.add_argument('--vram_O', action='store_true', help="optimization for low VRAM usage")
+    parser.add_argument('--vram_O', default=False, action='store_true', help="optimization for low VRAM usage")
     # rendering resolution in training, increase these for better quality / decrease these if CUDA OOM even if --vram_O enabled.
     parser.add_argument('--w', type=int, default=64, help="render width for NeRF in training")
     parser.add_argument('--h', type=int, default=64, help="render height for NeRF in training")
@@ -144,6 +147,8 @@ if __name__ == '__main__':
     parser.add_argument('--lambda_depth', type=float, default=10, help="loss scale for relative depth")
     parser.add_argument('--lambda_2d_normal_smooth', type=float, default=0, help="loss scale for 2D normal image smoothness")
     parser.add_argument('--lambda_3d_normal_smooth', type=float, default=0, help="loss scale for 3D normal image smoothness")
+    parser.add_argument('--lambda_grid_tv_reg', type=float, default=1e-7, help="loss scale for grid regularization")
+    parser.add_argument('--lambda_grid_l2_reg', type=float, default=1e-7, help="loss scale for grid regularization")
 
     ### debugging options
     parser.add_argument('--save_guidance', action='store_true', help="save images of the per-iteration NeRF renders, added noise, denoised (i.e. guidance), fully-denoised. Useful for debugging, but VERY SLOW and takes lots of memory!")
@@ -314,7 +319,7 @@ if __name__ == '__main__':
         seed_everything(int(opt.seed))
     # torch.cuda.set_device(2)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    # device = accelerator.device
     model = NeRFNetwork(opt).to(device)
 
     if opt.dmtet and opt.init_with != '':
