@@ -161,10 +161,12 @@ class IF(nn.Module):
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
         # t = torch.randint(self.min_step, self.max_step + 1, (images.shape[0],), dtype=torch.long, device=self.device)
-        if global_step <= 5000:
-            t = self.t_choice[global_step - 1]
-        else:
-            t = torch.randint(self.min_step, self.max_step + 1, (images.shape[0],), dtype=torch.long, device=self.device)
+        # if global_step <= 5000:
+        #     t = self.t_choice[global_step - 1]
+        # else:
+        #     # guidance_scale = 30
+        #     t = torch.randint(self.min_step, self.max_step + 1, (images.shape[0],), dtype=torch.long, device=self.device)
+        t = torch.randint(self.min_step, self.max_step + 1, (images.shape[0],), dtype=torch.long, device=self.device)
         # t = self.t_choice[global_step - 1]
         # print(t)
         # t = self.t_choice(global_step)
@@ -173,6 +175,8 @@ class IF(nn.Module):
         with torch.no_grad():
             # add noise
             noise = torch.randn_like(images)
+            # noise = torch.randn_like(images) + 0.01 * torch.randn(
+            #             images.shape[0], images.shape[1], 1, 1, device=images.device)
             images_noisy = self.scheduler.add_noise(images, noise, t)
 
             # pred noise
@@ -194,7 +198,7 @@ class IF(nn.Module):
         grad = grad_scale * w[:, None, None, None] * (noise_pred - noise)
         grad = torch.nan_to_num(grad)
         # if global_step % 100 == 0:
-        #     filename = f"./trial_test_res_rabbit_1_test/grad/grad_at_step_{global_step}.pt"
+        #     filename = f"./trial_test_tiger_res_scale4-grid-nf-90-ts/grad/grad_at_step_{global_step}.pt"
         #     torch.save(grad, filename)
         # since we omitted an item in grad, we need to use the custom function to specify the gradient
         loss = SpecifyGradient.apply(images, grad)

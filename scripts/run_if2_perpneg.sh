@@ -20,3 +20,5 @@ python main.py -O --text "a tiger cub" --workspace trial_perpneg_if_tiger_ms_lr 
 python main.py -O --text "a shiba dog wearing sunglasses" --workspace trial_perpneg_if_shiba_ms --iters 5000 --IF --batch_size 1 --perpneg
 
 python main.py -O --text "a octopus toy" --workspace trial_tp_octopus --iters 5000 --IF --batch_size 1 --perpneg
+
+python main.py -O --text "a zoomed out DSLR photo of a raccoon astronaut holding his helmet" --workspace final_exp_fullmodel/exp_2 --iters 6000 --IF --batch_size 1 --perpneg

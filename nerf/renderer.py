@@ -269,6 +269,7 @@ class NeRFRenderer(nn.Module):
         self.min_near = opt.min_near
         self.density_thresh = opt.density_thresh
         self.train_step = 0
+        self.max_train_step = 6000
         # prepare aabb with a 6D tensor (xmin, ymin, zmin, xmax, ymax, zmax)
         # NOTE: aabb (can be rectangular) is only used to generate points, we still rely on bound (always cubic) to calculate density grid and hashing.
         aabb_train = torch.FloatTensor([-opt.bound, -opt.bound, -opt.bound, opt.bound, opt.bound, opt.bound])
@@ -737,6 +738,7 @@ class NeRFRenderer(nn.Module):
             if light_d.shape[0] > 1:
                 flatten_rays = raymarching.flatten_rays(rays, xyzs.shape[0]).long()
                 light_d = light_d[flatten_rays]
+
             
             sigmas, rgbs, normals = self(xyzs, dirs, light_d, ratio=ambient_ratio, shading=shading)
             weights, weights_sum, depth, image = raymarching.composite_rays_train(sigmas, rgbs, ts, rays, T_thresh, binarize)
@@ -796,16 +798,19 @@ class NeRFRenderer(nn.Module):
                 step += n_step
 
         # mix background color
-        # if bg_color is None:
-        #     if self.opt.bg_radius > 0:
-        #         # use the bg model to calculate bg_color
-        #         bg_color = self.background(rays_d) # [N, 3]
-        #     else:
-        #         bg_color = 1
-        bg_color = 1
+        if bg_color is None:
+            if self.opt.bg_radius > 0:
+                # use the bg model to calculate bg_color
+                bg_color = self.background(rays_d) # [N, 3]
+            else:
+                bg_color = 1
+        # bg_color = 1
+        # bg_color = 1e-3
+        if shading == 'normal':
+            bg_color = 1
         image = image + (1 - weights_sum).unsqueeze(-1) * bg_color
-        image = image.view(*prefix, 3)
 
+        image = image.view(*prefix, 3)
         depth = depth.view(*prefix)
 
         weights_sum = weights_sum.reshape(*prefix)

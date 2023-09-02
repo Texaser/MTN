@@ -464,15 +464,24 @@ class Trainer(object):
 
         # progressively relaxing view range
         if self.opt.progressive_view:
-            r = min(1.0, self.opt.progressive_view_init_ratio + 2.0*exp_iter_ratio)
-            self.opt.phi_range = [self.opt.default_azimuth * (1 - r) + self.opt.full_phi_range[0] * r,
-                                  self.opt.default_azimuth * (1 - r) + self.opt.full_phi_range[1] * r]
-            self.opt.theta_range = [self.opt.default_polar * (1 - r) + self.opt.full_theta_range[0] * r,
-                                    self.opt.default_polar * (1 - r) + self.opt.full_theta_range[1] * r]
-            self.opt.radius_range = [self.opt.default_radius * (1 - r) + self.opt.full_radius_range[0] * r,
-                                    self.opt.default_radius * (1 - r) + self.opt.full_radius_range[1] * r]
-            self.opt.fovy_range = [self.opt.default_fovy * (1 - r) + self.opt.full_fovy_range[0] * r,
-                                    self.opt.default_fovy * (1 - r) + self.opt.full_fovy_range[1] * r]
+            if self.global_step > 5000:
+                r = 0.6
+            elif self.global_step > 4000:
+                r = 0.7
+            elif self.global_step > 3000:
+                r = 0.8
+            else:
+                r = 1
+                # r = min(1.0, self.opt.progressive_view_init_ratio + 2.0*exp_iter_ratio)
+                # self.opt.phi_range = [self.opt.default_azimuth * (1 - r) + self.opt.full_phi_range[0] * r,
+                #                       self.opt.default_azimuth * (1 - r) + self.opt.full_phi_range[1] * r]
+                # self.opt.theta_range = [self.opt.default_polar * (1 - r) + self.opt.full_theta_range[0] * r,
+                #                         self.opt.default_polar * (1 - r) + self.opt.full_theta_range[1] * r]
+                # self.opt.radius_range = [self.opt.default_radius * (1 - r) + self.opt.full_radius_range[0] * r,
+                #                         self.opt.default_radius * (1 - r) + self.opt.full_radius_range[1] * r]
+            self.opt.radius_range = [self.opt.full_radius_range[0] * r, self.opt.full_radius_range[1] * r]
+            # self.opt.fovy_range = [self.opt.default_fovy * (1 - r) + self.opt.full_fovy_range[0] * r,
+            #                         self.opt.default_fovy * (1 - r) + self.opt.full_fovy_range[1] * r]
 
         # progressively increase max_level
         if self.opt.progressive_level:
@@ -545,9 +554,11 @@ class Trainer(object):
         outputs = self.model.render(rays_o, rays_d, mvp, H, W, staged=False, perturb=True, bg_color=bg_color, ambient_ratio=ambient_ratio, shading=shading, binarize=binarize)
         pred_depth = outputs['depth'].reshape(B, 1, H, W)
         pred_mask = outputs['weights_sum'].reshape(B, 1, H, W)
+
+
+
         if 'normal_image' in outputs:
             pred_normal = outputs['normal_image'].reshape(B, H, W, 3)
-
         if as_latent:
             # abuse normal & mask as latent code for faster geometry initialization (ref: fantasia3D)
             pred_rgb = torch.cat([outputs['image'], outputs['weights_sum'].unsqueeze(-1)], dim=-1).reshape(B, H, W, 4).permute(0, 3, 1, 2).contiguous() # [B, 4, H, W]
@@ -777,10 +788,17 @@ class Trainer(object):
         pred_rgb = outputs['image'].reshape(B, H, W, 3)
         pred_depth = outputs['depth'].reshape(B, H, W)
 
+
+        # Render again for normals
+        shading = 'normal'
+        outputs_normals = self.model.render(rays_o, rays_d, mvp, H, W, staged=True, perturb=False, bg_color=None,
+                                           ambient_ratio=ambient_ratio, shading=shading)
+        pred_normals = outputs_normals['image'][:, :, :3].reshape(B, H, W, 3).contiguous()
+
         # dummy
         loss = torch.zeros([1], device=pred_rgb.device, dtype=pred_rgb.dtype)
 
-        return pred_rgb, pred_depth, loss
+        return pred_rgb, pred_depth, pred_normals, loss
 
     def test_step(self, data, bg_color=None, perturb=False):
         rays_o = data['rays_o'] # [B, N, 3]
@@ -802,7 +820,13 @@ class Trainer(object):
         pred_rgb = outputs['image'].reshape(B, H, W, 3)
         pred_depth = outputs['depth'].reshape(B, H, W)
 
-        return pred_rgb, pred_depth, None
+        
+        shading = 'normal'
+        outputs_normals = self.model.render(rays_o, rays_d, mvp, H, W, staged=True, perturb=False, light_d=light_d,
+                                           ambient_ratio=ambient_ratio, shading=shading)
+        pred_normals = outputs_normals['image'][:, :, :3].reshape(B, H, W, 3).contiguous()
+
+        return pred_rgb, pred_depth, pred_normals, None
 
     def save_mesh(self, loader=None, save_path=None):
 
@@ -875,13 +899,13 @@ class Trainer(object):
         if write_video:
             all_preds = []
             all_preds_depth = []
-
+            all_preds_normal = []
         with torch.no_grad():
 
             for i, data in enumerate(loader):
 
                 with torch.cuda.amp.autocast(enabled=self.fp16):
-                    preds, preds_depth, _ = self.test_step(data)
+                    preds, preds_depth, preds_normal, _ = self.test_step(data)
 
                 pred = preds[0].detach().cpu().numpy()
                 pred = (pred * 255).astype(np.uint8)
@@ -890,21 +914,27 @@ class Trainer(object):
                 pred_depth = (pred_depth - pred_depth.min()) / (pred_depth.max() - pred_depth.min() + 1e-6)
                 pred_depth = (pred_depth * 255).astype(np.uint8)
 
+                pred_normal = preds_normal[0].detach().cpu().numpy()
+                pred_normal = (pred_normal * 255).astype(np.uint8)
+
                 if write_video:
                     all_preds.append(pred)
                     all_preds_depth.append(pred_depth)
+                    all_preds_normal.append(pred_normal)
                 else:
                     cv2.imwrite(os.path.join(save_path, f'{name}_{i:04d}_rgb.png'), cv2.cvtColor(pred, cv2.COLOR_RGB2BGR))
                     cv2.imwrite(os.path.join(save_path, f'{name}_{i:04d}_depth.png'), pred_depth)
+                    cv2.imwrite(os.path.join(save_path, f'{name}_{i:04d}_normal.png'), cv2.cvtColor(pred_normal, cv2.COLOR_RGB2BGR))
 
                 pbar.update(loader.batch_size)
 
         if write_video:
             all_preds = np.stack(all_preds, axis=0)
             all_preds_depth = np.stack(all_preds_depth, axis=0)
-
+            all_preds_normal = np.stack(all_preds_normal, axis=0)
             imageio.mimwrite(os.path.join(save_path, f'{name}_rgb.mp4'), all_preds, fps=25, quality=8, macro_block_size=1)
             imageio.mimwrite(os.path.join(save_path, f'{name}_depth.mp4'), all_preds_depth, fps=25, quality=8, macro_block_size=1)
+            imageio.mimwrite(os.path.join(save_path, f'{name}_normal.mp4'), all_preds_normal, fps=25, quality=8, macro_block_size=1)
 
         self.log(f"==> Finished Test.")
 
@@ -1167,7 +1197,7 @@ class Trainer(object):
                 self.local_step += 1
 
                 with torch.cuda.amp.autocast(enabled=self.fp16):
-                    preds, preds_depth, loss = self.eval_step(data)
+                    preds, preds_depth, preds_normal, loss = self.eval_step(data)
 
                 # all_gather/reduce the statistics (NCCL only support all_*)
                 if self.world_size > 1:
@@ -1182,6 +1212,10 @@ class Trainer(object):
                     dist.all_gather(preds_depth_list, preds_depth)
                     preds_depth = torch.cat(preds_depth_list, dim=0)
 
+                    preds_normal_list = [torch.zeros_like(preds_normal).to(self.device) for _ in range(self.world_size)] # [[B, ...], [B, ...], ...]
+                    dist.all_gather(preds_normal_list, preds_normal)
+                    preds_normal = torch.cat(preds_normal_list, dim=0)
+
                 loss_val = loss.item()
                 total_loss += loss_val
 
@@ -1191,6 +1225,7 @@ class Trainer(object):
                     # save image
                     save_path = os.path.join(self.workspace, 'validation', f'{name}_{self.local_step:04d}_rgb.png')
                     save_path_depth = os.path.join(self.workspace, 'validation', f'{name}_{self.local_step:04d}_depth.png')
+                    save_path_normal = os.path.join(self.workspace, 'validation', f'{name}_{self.local_step:04d}_normal.png')
 
                     #self.log(f"==> Saving validation image to {save_path}")
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -1202,8 +1237,13 @@ class Trainer(object):
                     pred_depth = (pred_depth - pred_depth.min()) / (pred_depth.max() - pred_depth.min() + 1e-6)
                     pred_depth = (pred_depth * 255).astype(np.uint8)
 
+                    pred_normal = preds_normal[0].detach().cpu().numpy()
+                    pred_normal = (pred_normal * 255).astype(np.uint8)
+
+
                     cv2.imwrite(save_path, cv2.cvtColor(pred, cv2.COLOR_RGB2BGR))
                     cv2.imwrite(save_path_depth, pred_depth)
+                    cv2.imwrite(save_path_normal, cv2.cvtColor(pred_normal, cv2.COLOR_RGB2BGR))
 
                     pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f})")
                     pbar.update(loader.batch_size)

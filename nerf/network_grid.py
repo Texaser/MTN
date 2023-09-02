@@ -76,7 +76,12 @@ class NeRFNetwork(NeRFRenderer):
         # sigma = self.density_activation(h[..., 0] + self.density_blob(x))
         # albedo = torch.sigmoid(h[..., 1:])
         sigma = self.density_activation(h[:, ..., 0] + self.density_blob(x))
+        # if self.train_step > self.max_train_step // 3:
+        #     albedo = torch.sigmoid(h[:, ..., 1:])
+        # else:
         albedo = torch.sigmoid(h[:, ..., 1:])
+        # albedo = h[:, ..., 1:]
+        # albedo.clamp_(min=0, max=1)
         # 前期不要sigmoid 后期sigmoid
         return sigma, albedo
     
@@ -120,8 +125,8 @@ class NeRFNetwork(NeRFRenderer):
 
             # normal = self.normal_net(enc)
             normal = self.normal(x)
-
-            lambertian = ratio + (1 - ratio) * (normal * l).sum(-1).clamp(min=0) # [N,]
+            if shading != 'normal':
+                lambertian = ratio + (1 - ratio) * (normal * l).sum(-1).clamp(min=0) # [N,]
 
             if shading == 'textureless':
                 # print(normal.shape)

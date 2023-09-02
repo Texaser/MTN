@@ -29,10 +29,10 @@ if __name__ == '__main__':
     parser.add_argument('-O2', action='store_true', help="equals --backbone vanilla")
     parser.add_argument('--test', action='store_true', help="test mode")
     parser.add_argument('--six_views', action='store_true', help="six_views mode: save the images of the six views")
-    parser.add_argument('--eval_interval', type=int, default=5, help="evaluate on the valid set every interval epochs")
+    parser.add_argument('--eval_interval', type=int, default=10, help="evaluate on the valid set every interval epochs")
     parser.add_argument('--test_interval', type=int, default=100, help="test on the test set every interval epochs")
     parser.add_argument('--workspace', type=str, default='workspace')
-    parser.add_argument('--seed', default=3407)
+    parser.add_argument('--seed', default=3407) #3407 42
 
     parser.add_argument('--image', default=None, help="image prompt")
     parser.add_argument('--image_config', default=None, help="image config csv")
@@ -83,7 +83,7 @@ if __name__ == '__main__':
     parser.add_argument('--grad_clip', type=float, default=-1, help="clip grad of all grad to this limit, negative value disables it")
     parser.add_argument('--grad_clip_rgb', type=float, default=-1, help="clip grad of rgb space grad to this limit, negative value disables it")
     # model options
-    parser.add_argument('--bg_radius', type=float, default=-1, help="if positive, use a background model at sphere(bg_radius)") #1.4
+    parser.add_argument('--bg_radius', type=float, default=1.4, help="if positive, use a background model at sphere(bg_radius)") #1.4
     parser.add_argument('--density_activation', type=str, default='exp', choices=['softplus', 'exp'], help="density activation function")
     parser.add_argument('--density_thresh', type=float, default=10, help="threshold for density grid to be occupied")
     parser.add_argument('--blob_density', type=float, default=5, help="max (center) density for the density blob")
@@ -119,7 +119,7 @@ if __name__ == '__main__':
     parser.add_argument('--default_azimuth', type=float, default=0, help="azimuth for the default view")
     parser.add_argument('--default_fovy', type=float, default=20, help="fovy for the default view")
 
-    parser.add_argument('--progressive_view', action='store_true', help="progressively expand view sampling range from default to full")
+    parser.add_argument('--progressive_view', default=False, action='store_true', help="progressively expand view sampling range from default to full")
     parser.add_argument('--progressive_view_init_ratio', type=float, default=0.2, help="initial ratio of final range, used for progressive_view")
     
     parser.add_argument('--progressive_level', action='store_true', help="progressively increase gridencoder's max_level")
