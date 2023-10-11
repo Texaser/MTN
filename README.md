@@ -1,5 +1,5 @@
 # MTN (Multi-Scale Triplane Network)
-This repository contains the official implementation of Progressive Text-to-3D Generation for Automatic 3D Prototyping.
+This repository contains the official implementation of Progressive Text-to-3D Generation for Automatic 3D Prototyping (https://arxiv.org/abs/2309.14600).
 ### [Paper](https://arxiv.org/abs/2309.14600)
 
 ### Video results
