@@ -30,9 +30,7 @@ from rich.console import Console
 from torch_ema import ExponentialMovingAverage
 
 from packaging import version as pver
-# from accelerate import Accelerator
 
-# accelerator = Accelerator()
 def adjust_text_embeddings(embeddings, azimuth, opt):
     text_z_list = []
     weights_list = []

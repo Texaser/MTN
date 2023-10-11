@@ -1,13 +1,10 @@
 import os 
-# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-os.environ["CUDA_VISIBLE_DEVICES"] = '3'
+os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 import torch
 import argparse
 import pandas as pd
 import sys
-# from accelerate import Accelerator
 
-# accelerator = Accelerator()
 from nerf.provider import NeRFDataset
 from nerf.utils import *
 
@@ -32,7 +29,7 @@ if __name__ == '__main__':
     parser.add_argument('--eval_interval', type=int, default=10, help="evaluate on the valid set every interval epochs")
     parser.add_argument('--test_interval', type=int, default=100, help="test on the test set every interval epochs")
     parser.add_argument('--workspace', type=str, default='workspace')
-    parser.add_argument('--seed', default=3407) #3407 42
+    parser.add_argument('--seed', default=42) #3407 42
 
     parser.add_argument('--image', default=None, help="image prompt")
     parser.add_argument('--image_config', default=None, help="image config csv")
@@ -119,7 +116,7 @@ if __name__ == '__main__':
     parser.add_argument('--default_azimuth', type=float, default=0, help="azimuth for the default view")
     parser.add_argument('--default_fovy', type=float, default=20, help="fovy for the default view")
 
-    parser.add_argument('--progressive_view', default=False, action='store_true', help="progressively expand view sampling range from default to full")
+    parser.add_argument('--progressive_view', default=True, action='store_true', help="progressively expand view sampling range from default to full")
     parser.add_argument('--progressive_view_init_ratio', type=float, default=0.2, help="initial ratio of final range, used for progressive_view")
     
     parser.add_argument('--progressive_level', action='store_true', help="progressively increase gridencoder's max_level")
@@ -317,9 +314,7 @@ if __name__ == '__main__':
 
     if opt.seed is not None:
         seed_everything(int(opt.seed))
-    # torch.cuda.set_device(2)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # device = accelerator.device
     model = NeRFNetwork(opt).to(device)
 
     if opt.dmtet and opt.init_with != '':
