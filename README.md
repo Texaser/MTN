@@ -3,9 +3,9 @@ This repository contains the official implementation of Progressive Text-to-3D G
 ### [Paper](https://arxiv.org/abs/2309.14600)
 
 ### Video results
-<video src="https://github.com/Texaser/MTN/assets/50570271/97a8d75c-ab0c-4935-93c6-e337b29da81f" width="720" height="480"></video>
-<video src="https://github.com/Texaser/MTN/assets/50570271/29fc914c-54f7-446e-a589-6313b2b1025b" width="720" height="480"></video>
-<video src="https://github.com/Texaser/MTN/assets/50570271/8396e87c-d6e0-4acc-8e33-d5054380e761" width="720" height="480"></video>
+<video src="https://github.com/Texaser/MTN/assets/50570271/97a8d75c-ab0c-4935-93c6-e337b29da81f" width="%80" height="%60"></video>
+<video src="https://github.com/Texaser/MTN/assets/50570271/29fc914c-54f7-446e-a589-6313b2b1025b" width="%80" height="%60"></video>
+<video src="https://github.com/Texaser/MTN/assets/50570271/8396e87c-d6e0-4acc-8e33-d5054380e761" width="%80" height="%60"></video>
 
 For more videos, refer to https://www.youtube.com/watch?v=LH6-wKg30FQ
 
@@ -57,6 +57,7 @@ If you find this work useful, a citation will be appreciated via:
 
 ## Acknowledgement
 This code base is built upon the following awesome open-source projects:
-[Stable DreamFusion](https://github.com/ashawkey/stable-dreamfusion)
+[Stable DreamFusion](https://github.com/ashawkey/stable-dreamfusion),
 [threestudio](https://github.com/threestudio-project/threestudio)
+
 Thanks the authors for their remarkable job !
