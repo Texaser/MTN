@@ -3,9 +3,13 @@ This repository contains the official implementation of Progressive Text-to-3D G
 ### [Paper](https://arxiv.org/abs/2309.14600)
 
 ### Video results
-<video src="https://github.com/Texaser/MTN/assets/50570271/97a8d75c-ab0c-4935-93c6-e337b29da81f" width="300" height="200"></video>
-<video src="https://github.com/Texaser/MTN/assets/50570271/29fc914c-54f7-446e-a589-6313b2b1025b" width="300" height="200"></video>
-<video src="https://github.com/Texaser/MTN/assets/50570271/8396e87c-d6e0-4acc-8e33-d5054380e761" width="300" height="200"></video>
+
+
+https://github.com/Texaser/MTN/assets/50570271/bdc776a6-ee2d-43ff-9ee3-21784799d3cb
+
+https://github.com/Texaser/MTN/assets/50570271/197fa808-154b-4671-8446-8350b1e166d6
+
+
 
 For more videos, please refer to https://www.youtube.com/watch?v=LH6-wKg30FQ
 
