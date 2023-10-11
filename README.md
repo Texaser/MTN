@@ -53,6 +53,9 @@ If you find this work useful, a citation will be appreciated via:
 
 ## Acknowledgement
 This code base is built upon the following awesome open-source projects:
+
 [Stable DreamFusion](https://github.com/ashawkey/stable-dreamfusion)
+
 [threestudio](https://github.com/threestudio-project/threestudio)
+
 Thanks the authors for their remarkable job !
