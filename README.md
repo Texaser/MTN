@@ -4,10 +4,16 @@ This repository contains the official implementation of Progressive Text-to-3D G
 
 ### Video results
 https://www.youtube.com/watch?v=LH6-wKg30FQ
-https://github.com/Texaser/MTN/tree/main/assets/tiger.mp4
-https://github.com/Texaser/MTN/tree/main/assets/cream_1.mp4
-https://github.com/Texaser/MTN/tree/main/assets/exp_8.mp4
-https://github.com/Texaser/MTN/tree/main/assets/exp_15.mp4
+
+https://github.com/Texaser/MTN/assets/50570271/97a8d75c-ab0c-4935-93c6-e337b29da81f
+
+https://github.com/Texaser/MTN/assets/50570271/29fc914c-54f7-446e-a589-6313b2b1025b
+
+https://github.com/Texaser/MTN/assets/50570271/8396e87c-d6e0-4acc-8e33-d5054380e761
+
+
+
+
 ### Instructions:
 1. Install the requirements:
 ```
