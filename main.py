@@ -29,7 +29,7 @@ if __name__ == '__main__':
     parser.add_argument('--eval_interval', type=int, default=10, help="evaluate on the valid set every interval epochs")
     parser.add_argument('--test_interval', type=int, default=100, help="test on the test set every interval epochs")
     parser.add_argument('--workspace', type=str, default='workspace')
-    parser.add_argument('--seed', default=42) #3407 42
+    parser.add_argument('--seed', default=3407) #3407 42
 
     parser.add_argument('--image', default=None, help="image prompt")
     parser.add_argument('--image_config', default=None, help="image config csv")
