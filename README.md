@@ -16,6 +16,8 @@ For more videos, please refer to https://www.youtube.com/watch?v=LH6-wKg30FQ
 ### Instructions:
 1. Install the requirements:
 ```
+conda create --name MTN python=3.9
+conda activate MTN
 pip install -r requirements.txt
 ```
 To use [DeepFloyd-IF](https://github.com/deep-floyd/IF), you need to accept the usage conditions from [hugging face](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0), and login with `huggingface-cli login` in command line.
