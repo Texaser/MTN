@@ -1,7 +1,7 @@
 tqdm
 rich
 ninja
-numpy
+numpy == 1.26.4
 pandas
 scipy
 scikit-learn
@@ -10,7 +10,7 @@ opencv-python
 imageio
 imageio-ffmpeg
 
-torch
+torch == 1.13.1
 torch-ema
 einops
 tensorboard
