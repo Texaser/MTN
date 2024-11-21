@@ -18,6 +18,7 @@ For more videos, please refer to https://www.youtube.com/watch?v=LH6-wKg30FQ
 ```
 conda create --name MTN python=3.9
 conda activate MTN
+conda install -c conda-forge gcc=11.2.0 gxx=11.2.0
 pip install -r requirements.txt
 ```
 To use [DeepFloyd-IF](https://github.com/deep-floyd/IF), you need to accept the usage conditions from [hugging face](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0), and login with `huggingface-cli login` in command line.
@@ -47,7 +48,8 @@ python main.py --workspace trial -O --test --save_mesh
 python main.py --workspace trial -O --test --gui
 ```
 ### Tested environments
-* torch 1.13 & CUDA 11.5 on a V100.
+* python 3.9 & torch 1.13 & CUDA 11.5 on a V100.
+* python 3.9 & torch 1.13 & CUDA 11.7 on a 3090/4090. 
 
 # Citation
 
