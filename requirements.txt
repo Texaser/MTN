@@ -32,7 +32,7 @@ transformers
 xatlas
 trimesh
 PyMCubes
-pymeshlab
+pymeshlab == 2022.2.post3
 git+https://github.com/NVlabs/nvdiffrast/
 
 # for zero123
