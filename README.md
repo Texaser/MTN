@@ -1,4 +1,4 @@
-# MTN (Multi-Scale Triplane Network)
+![image](https://github.com/user-attachments/assets/585aa21e-1c99-484d-b86c-c04b3716db0e)# MTN (Multi-Scale Triplane Network)
 This repository contains the official implementation of Progressive Text-to-3D Generation for Automatic 3D Prototyping (https://arxiv.org/abs/2309.14600).
 ### [Paper](https://arxiv.org/abs/2309.14600)
 
@@ -19,7 +19,7 @@ For more videos, please refer to https://www.youtube.com/watch?v=LH6-wKg30FQ
 conda create --name MTN python=3.9
 conda activate MTN
 conda install -c conda-forge gcc=11.2.0 gxx=11.2.0
-git clone git@github.com:Texaser/MTN.git
+git clone https://github.com/Texaser/MTN.git
 cd MTN
 pip install -r requirements.txt
 ```
