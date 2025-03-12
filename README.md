@@ -1,4 +1,4 @@
-![image](https://github.com/user-attachments/assets/585aa21e-1c99-484d-b86c-c04b3716db0e)# MTN (Multi-Scale Triplane Network)
+# MTN (Multi-Scale Triplane Network)
 This repository contains the official implementation of Progressive Text-to-3D Generation for Automatic 3D Prototyping (https://arxiv.org/abs/2309.14600).
 ### [Paper](https://arxiv.org/abs/2309.14600)
 
@@ -52,6 +52,13 @@ python main.py --workspace trial -O --test --gui
 ### Tested environments
 * python 3.9 & torch 1.13 & CUDA 11.5 on a V100.
 * python 3.9 & torch 1.13 & CUDA 11.7 on a 3090/4090. 
+
+
+## Star History
+If you like this code, please give a star~
+<img width="749" alt="image" src="https://github.com/user-attachments/assets/edcaf836-ac45-49f9-9a64-59fbf599a28d" />
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Texaser/MTN&type=Date)](https://www.star-history.com/#Texaser/MTN&Date)
 
 # Citation
 
