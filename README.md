@@ -53,6 +53,8 @@ python main.py --workspace trial -O --test --gui
 * python 3.9 & torch 1.13 & CUDA 11.5 on a V100.
 * python 3.9 & torch 1.13 & CUDA 11.7 on a 3090/4090. 
 
+### Tips
+The training process can sometimes be unstable due to the original code pipeline (StableDreamfusion). In such cases, you might try adjusting the lr to 3e-4 or 5e-4. Setting the lr to 1e-5 is too small for the model to converge effectively. If the model fails, consider using a different prompt or a different random seed.
 
 ## Star History
 If you like this code, please give a star~
