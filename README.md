@@ -66,11 +66,11 @@ If you like this code, please give a star~
 
 If you find this work useful, a citation will be appreciated via:
 ```
-@article{yi2023progressive,
+@article{yi2026progressive,
   title={Progressive Text-to-3D Generation for Automatic 3D Prototyping},
   author={Yi, Han and Zheng, Zhedong and Xu, Xiangyu and Chua, Tat-seng},
-  journal={arXiv preprint arXiv:2309.14600},
-  year={2023}
+  journal={ACM TOMM},
+  year={2026}
 }
 ```
 
