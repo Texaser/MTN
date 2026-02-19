@@ -48,10 +48,12 @@ class StableDiffusion(nn.Module):
         if hf_key is not None:
             print(f'[INFO] using hugging face custom model key: {hf_key}')
             model_key = hf_key
+        elif self.sd_version == "3.5":
+            model_key = "stabilityai/stable-diffusion-3.5-large"
         elif self.sd_version == '2.1':
-            model_key = "stabilityai/stable-diffusion-2-1-base"
+            model_key = "sd2-community/stable-diffusion-2-1-base"
         elif self.sd_version == '2.0':
-            model_key = "stabilityai/stable-diffusion-2-base"
+            model_key = "sd2-community/stable-diffusion-2-base"
         elif self.sd_version == '1.5':
             model_key = "runwayml/stable-diffusion-v1-5"
         else:
