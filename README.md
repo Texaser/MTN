@@ -14,15 +14,30 @@ https://github.com/Texaser/MTN/assets/50570271/197fa808-154b-4671-8446-8350b1e16
 For more videos, please refer to https://www.youtube.com/watch?v=LH6-wKg30FQ
 
 ### Instructions:
+0. Make sure cuda-toolkit is exported correctly:
+```
+nvcc -V
+```
+The output is like:
+```
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2025 NVIDIA Corporation
+Built on Fri_Feb_21_20:23:50_PST_2025
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+```
 1. Install the requirements:
 ```
 conda create --name MTN python=3.9
 conda activate MTN
+pip install pytorch==1.13.1
 conda install -c conda-forge gcc=11.2.0 gxx=11.2.0
 git clone https://github.com/Texaser/MTN.git
 cd MTN
-pip install -r requirements.txt
+pip install -r requirements.txt --no-build-isolation
 ```
+If compilation fails, you can choose to download the nvcc version first (PyTorch from https://pytorch.org/get-started/previous-versions/).
+
 To use [DeepFloyd-IF](https://github.com/deep-floyd/IF), you need to accept the usage conditions from [hugging face](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0), and login with `huggingface-cli login` in command line.
 
 2. Start training!
