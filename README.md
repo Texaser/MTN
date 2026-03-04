@@ -36,7 +36,7 @@ git clone https://github.com/Texaser/MTN.git
 cd MTN
 pip install -r requirements.txt --no-build-isolation
 ```
-If compilation fails, you can choose to download the nvcc version first (PyTorch from https://pytorch.org/get-started/previous-versions/).
+If compilation fails, you can choose the torch version that match your nvcc version first (You can get the installation instructions from https://pytorch.org/get-started/previous-versions/).
 
 To use [DeepFloyd-IF](https://github.com/deep-floyd/IF), you need to accept the usage conditions from [hugging face](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0), and login with `huggingface-cli login` in command line.
 
