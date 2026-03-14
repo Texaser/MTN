@@ -80,7 +80,10 @@ A temporary workaround that has been used by some developers (**not recommended 
 Locate the `cpp_extension.py` file in your PyTorch installation, usually at: ~/miniconda3/envs/<your_env_name>/lib/python3.9/site-packages/torch/utils/cpp_extension.py
 
 You can confirm the path by running:
+
+```python
 python -c "import torch; print(torch.__file__)"
+```
 
 Open the file and find the function `_check_cuda_version` (typically around lines 380–400). Locate the line that raises the error:
 
@@ -90,14 +93,17 @@ raise RuntimeError(CUDA_MISMATCH_MESSAGE.format(cuda_str_version, torch.version.
 
 Replace it with a no-op statement, for example:
 
+```python
 # raise RuntimeError(CUDA_MISMATCH_MESSAGE.format(cuda_str_version, torch.version.cuda))
 print("Warning: CUDA version check temporarily bypassed (build only)")
 # or simply:
 # pass
+```
 
 Save the file and retry the installation:
+```python
 pip install -r requirements.txt --no-build-isolation
-
+```
 
 ## Star History
 If you like this code, please give a star~
