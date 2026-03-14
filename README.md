@@ -30,7 +30,7 @@ Build cuda_12.8.r12.8/compiler.35583870_0
 ```
 conda create --name MTN python=3.9
 conda activate MTN
-pip install pytorch==1.13.1
+pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu117
 conda install -c conda-forge gcc=11.2.0 gxx=11.2.0
 git clone https://github.com/Texaser/MTN.git
 cd MTN
@@ -70,6 +70,33 @@ python main.py --workspace trial -O --test --gui
 
 ### Tips
 The training process can sometimes be unstable due to the original code pipeline (StableDreamfusion). In such cases, you might try adjusting the lr to 3e-4 or 5e-4. Setting the lr to 1e-5 is too small for the model to converge effectively. If the model fails, consider using a different prompt or a different random seed.
+
+### Known Issue: CUDA version mismatch when building `nvdiffrast`
+
+In some environments, the build process of **nvdiffrast** may fail due to a strict CUDA version check when the detected system CUDA Toolkit version (e.g., CUDA 12.8) does not match the CUDA version PyTorch was compiled against (e.g., CUDA 11.7).
+
+A temporary workaround that has been used by some developers (**not recommended as a permanent solution**) is to bypass the CUDA version check inside PyTorch.
+
+Locate the `cpp_extension.py` file in your PyTorch installation, usually at: ~/miniconda3/envs/<your_env_name>/lib/python3.9/site-packages/torch/utils/cpp_extension.py
+
+You can confirm the path by running:
+python -c "import torch; print(torch.file)"
+
+Open the file and find the function `_check_cuda_version` (typically around lines 380–400). Locate the line that raises the error:
+
+```python
+raise RuntimeError(CUDA_MISMATCH_MESSAGE.format(cuda_str_version, torch.version.cuda))
+
+Replace it with a no-op statement, for example:
+
+# raise RuntimeError(CUDA_MISMATCH_MESSAGE.format(cuda_str_version, torch.version.cuda))
+print("Warning: CUDA version check temporarily bypassed (build only)")
+# or simply:
+# pass
+
+Save the file and retry the installation:
+pip install -r requirements.txt --no-build-isolation
+
 
 ## Star History
 If you like this code, please give a star~
